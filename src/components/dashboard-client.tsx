@@ -3,7 +3,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Pencil, Trash2, LogOut, ChevronDown, ChevronUp } from "lucide-react";
+import { Pencil, Trash2, LogOut, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -19,6 +19,7 @@ type SubExercise = {
   weightKg: number | null;
   durationMinutes: number | null;
   inputUnit: "kg" | "lbs" | "minutes";
+  order?: number;
   createdAt?: string;
 };
 
@@ -43,8 +44,10 @@ const LB_TO_KG = 0.453592;
 const blankSubForm = { label: "", sets: "", reps: "", weight: "", durationMinutes: "", inputUnit: "kg" as Unit };
 
 function subLabel(sub: SubExercise) {
-  if (sub.inputUnit === "minutes") return `${sub.durationMinutes ?? 0} mins`;
-  return `${sub.sets ?? 0}x${sub.reps ?? 0} x ${sub.weightKg ?? 0}kg`;
+  if (sub.inputUnit === "minutes") return `${sub.durationMinutes ?? 0} min`;
+  const parts = [`${sub.sets ?? 0} sets`, `${sub.reps ?? 0} reps`];
+  if (typeof sub.weightKg === "number") parts.push(`${sub.weightKg} kg`);
+  return parts.join(" | ");
 }
 
 function convertWeightInput(weight: string, from: Unit, to: Unit) {
@@ -78,7 +81,9 @@ export function DashboardClient({
   const [editingExerciseName, setEditingExerciseName] = useState("");
   const [subFormByExercise, setSubFormByExercise] = useState<Record<string, typeof blankSubForm>>({});
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
-  const [showProgressByExercise, setShowProgressByExercise] = useState<Record<string, boolean>>({});
+  const [showProgressBySub, setShowProgressBySub] = useState<Record<string, boolean>>({});
+  const [draggingSub, setDraggingSub] = useState<{ exerciseId: string; subId: string } | null>(null);
+  const [dragOverSubId, setDragOverSubId] = useState<string | null>(null);
 
   async function loadExercises() {
     setLoading(true);
@@ -108,8 +113,8 @@ export function DashboardClient({
       body: JSON.stringify({ username, name: exerciseName, dayOfWeek: addExerciseDay }),
     });
 
-    if (!res.ok) return toast.error("Failed to add exercise");
-    toast.success("Exercise added");
+    if (!res.ok) return toast.error("Failed to add movement");
+    toast.success("Movement added");
     setExerciseName("");
     setAddExerciseDay(null);
     await loadExercises();
@@ -130,9 +135,9 @@ export function DashboardClient({
   }
 
   async function deleteExercise(id: string) {
-    if (!confirm("Delete this exercise and all its sub-exercises?")) return;
+    if (!confirm("Delete this movement and all its exercises?")) return;
     await fetch(`/api/exercises/${id}`, { method: "DELETE" });
-    toast.success("Exercise deleted");
+    toast.success("Movement deleted");
     await loadExercises();
   }
 
@@ -192,6 +197,45 @@ export function DashboardClient({
     await loadExercises();
   }
 
+  async function reorderSubs(exerciseId: string, sourceSubId: string, targetSubId: string) {
+    if (sourceSubId === targetSubId) return;
+    const exercise = exercises.find((item) => item._id === exerciseId);
+    if (!exercise) return;
+
+    const current = [...exercise.subs];
+    const sourceIndex = current.findIndex((item) => item._id === sourceSubId);
+    const targetIndex = current.findIndex((item) => item._id === targetSubId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+
+    const [moved] = current.splice(sourceIndex, 1);
+    current.splice(targetIndex, 0, moved);
+    const subIds = current.map((item) => item._id);
+
+    setExercises((prev) =>
+      prev.map((item) =>
+        item._id === exerciseId
+          ? {
+              ...item,
+              subs: current,
+            }
+          : item,
+      ),
+    );
+
+    const res = await fetch(`/api/exercises/${exerciseId}/subs`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subIds }),
+    });
+    if (!res.ok) {
+      toast.error("Failed to reorder exercises");
+      await loadExercises();
+      return;
+    }
+
+    toast.success("Exercises reordered");
+  }
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.assign("/");
@@ -237,13 +281,6 @@ export function DashboardClient({
                 {grouped[day].map((exercise) => {
                   const form = subFormByExercise[exercise._id];
                   const isEditingExercise = editingExerciseId === exercise._id;
-                  const progressOpen = Boolean(showProgressByExercise[exercise._id]);
-                  const subGroups = exercise.subs.reduce<Record<string, SubExercise[]>>((acc, sub, index) => {
-                    const key = sub.label?.trim() || `Sub ${index + 1}`;
-                    if (!acc[key]) acc[key] = [];
-                    acc[key].push(sub);
-                    return acc;
-                  }, {});
                   return (
                     <Card key={exercise._id} className="border-l-4 border-l-[#b9ff66] p-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
@@ -264,59 +301,88 @@ export function DashboardClient({
                       </div>
 
                       <div className="space-y-2">
-                        {exercise.subs.map((sub) => (
-                          <div key={sub._id} className="flex items-center justify-between rounded-full bg-zinc-900 px-3 py-1 text-xs">
-                            <p>{sub.label ? `${sub.label} ` : ""}{subLabel(sub)}</p>
-                            <div className="flex gap-1">
-                              <Button size="sm" variant="ghost" onClick={() => startSubForm(exercise._id, sub)}><Pencil className="h-3.5 w-3.5" /></Button>
-                              <Button size="sm" variant="ghost" onClick={() => deleteSub(exercise._id, sub._id)}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-3 w-full"
-                        onClick={() =>
-                          setShowProgressByExercise((prev) => ({
-                            ...prev,
-                            [exercise._id]: !prev[exercise._id],
-                          }))
-                        }
-                      >
-                        {progressOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                        Progress
-                      </Button>
-
-                      {progressOpen && (
-                        <div className="mt-3 space-y-3 rounded-md border border-zinc-800 bg-zinc-950/40 p-3">
-                          {Object.entries(subGroups).map(([groupName, items]) => {
-                            const ordered = [...items].sort((a, b) => {
+                        {exercise.subs.map((sub, index) => {
+                          const progressOpen = Boolean(showProgressBySub[sub._id]);
+                          const groupName = sub.label?.trim() || `Exercise ${index + 1}`;
+                          const ordered = exercise.subs
+                            .filter((item, itemIndex) => {
+                              const key = item.label?.trim() || `Exercise ${itemIndex + 1}`;
+                              return key === groupName;
+                            })
+                            .sort((a, b) => {
                               const aTime = new Date(a.createdAt ?? 0).getTime();
                               const bTime = new Date(b.createdAt ?? 0).getTime();
                               return aTime - bTime;
                             });
-                            const weightPoints = ordered
-                              .map((item) => item.weightKg)
-                              .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-                            const minutePoints = ordered
-                              .map((item) => item.durationMinutes)
-                              .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+                          const weightPoints = ordered
+                            .map((item) => item.weightKg)
+                            .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+                          const minutePoints = ordered
+                            .map((item) => item.durationMinutes)
+                            .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
 
-                            return (
-                              <div key={groupName} className="space-y-1">
-                                <p className="text-xs font-medium uppercase text-zinc-400">{groupName}</p>
-                                <ProgressChart
-                                  values={weightPoints.length ? weightPoints : minutePoints}
-                                  suffix={weightPoints.length ? "kg" : "min"}
-                                />
+                          return (
+                            <div
+                              key={sub._id}
+                              draggable
+                              onDragStart={() => setDraggingSub({ exerciseId: exercise._id, subId: sub._id })}
+                              onDragEnd={() => {
+                                setDraggingSub(null);
+                                setDragOverSubId(null);
+                              }}
+                              onDragOver={(e) => {
+                                if (draggingSub?.exerciseId !== exercise._id || draggingSub.subId === sub._id) return;
+                                e.preventDefault();
+                                setDragOverSubId(sub._id);
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                if (draggingSub?.exerciseId !== exercise._id || draggingSub.subId === sub._id) return;
+                                void reorderSubs(exercise._id, draggingSub.subId, sub._id);
+                                setDraggingSub(null);
+                                setDragOverSubId(null);
+                              }}
+                              className={`rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs ${
+                                dragOverSubId === sub._id ? "ring-1 ring-[#b9ff66]" : ""
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex items-start gap-2">
+                                  <GripVertical className="mt-0.5 h-4 w-4 text-zinc-500" />
+                                  <p className="text-sm font-medium text-zinc-100">{groupName}</p>
+                                </div>
+                                <div className="flex gap-1">
+                                  <Button size="sm" variant="ghost" onClick={() => startSubForm(exercise._id, sub)}><Pencil className="h-3.5 w-3.5" /></Button>
+                                  <Button size="sm" variant="ghost" onClick={() => deleteSub(exercise._id, sub._id)}><Trash2 className="h-3.5 w-3.5 text-red-500" /></Button>
+                                </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                              <p className="mt-1 pl-6 text-zinc-300">{subLabel(sub)}</p>
+                              <div className="mt-2 pl-6">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setShowProgressBySub((prev) => ({
+                                      ...prev,
+                                      [sub._id]: !prev[sub._id],
+                                    }))
+                                  }
+                                >
+                                  {progressOpen ? "Hide Progress" : "View Progress"}
+                                </Button>
+                              </div>
+                              {progressOpen && (
+                                <div className="mt-2 rounded-md border border-zinc-800 bg-zinc-950/40 p-2">
+                                  <ProgressChart
+                                    values={weightPoints.length ? weightPoints : minutePoints}
+                                    suffix={weightPoints.length ? "kg" : "min"}
+                                  />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
 
                       {form ? (
                         <div className="mt-3 space-y-2 rounded-md border border-zinc-800 p-2">
@@ -357,13 +423,13 @@ export function DashboardClient({
                           </div>
                         </div>
                       ) : (
-                        <Button variant="dashed" size="sm" className="mt-3 w-full" onClick={() => startSubForm(exercise._id)}>+ Add Sub-exercise</Button>
+                        <Button variant="dashed" size="sm" className="mt-3 w-full" onClick={() => startSubForm(exercise._id)}>+ Add Exercise</Button>
                       )}
                     </Card>
                   );
                 })}
 
-                <Button variant="dashed" className="w-full" onClick={() => setAddExerciseDay(day)}>+ Add Exercise</Button>
+                <Button variant="dashed" className="w-full" onClick={() => setAddExerciseDay(day)}>+ Add Movement</Button>
               </div>
             </section>
           );
@@ -373,8 +439,8 @@ export function DashboardClient({
       {addExerciseDay && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <Card className="w-full max-w-md p-4">
-            <h3 className="mb-2 text-lg">Add Exercise ({DAY_LABELS[addExerciseDay]})</h3>
-            <Input list="exercise-names" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} placeholder="Exercise name" />
+            <h3 className="mb-2 text-lg">Add Movement ({DAY_LABELS[addExerciseDay]})</h3>
+            <Input list="exercise-names" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} placeholder="Movement name" />
             <datalist id="exercise-names">
               {pastNames.map((name) => <option key={name} value={name} />)}
             </datalist>

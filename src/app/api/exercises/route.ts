@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
 
   const exercises = await Exercise.find(query).sort({ dayOfWeek: 1, order: 1, createdAt: 1 }).lean();
   const exerciseIds = exercises.map((exercise) => exercise._id);
-  const subs = await SubExercise.find({ exerciseId: { $in: exerciseIds } }).sort({ createdAt: 1 }).lean();
+  const subs = await SubExercise.find({ exerciseId: { $in: exerciseIds } }).sort({ order: 1, createdAt: 1 }).lean();
 
   const subMap = new Map<string, typeof subs>();
   for (const sub of subs) {

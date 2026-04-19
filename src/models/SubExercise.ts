@@ -10,6 +10,7 @@ const subExerciseSchema = new Schema(
     weightKg: { type: Number, default: null },
     durationMinutes: { type: Number, default: null },
     inputUnit: { type: String, required: true, enum: ["kg", "lbs", "minutes"] },
+    order: { type: Number, required: true, default: 0 },
   },
   { timestamps: { createdAt: true, updatedAt: false } },
 );

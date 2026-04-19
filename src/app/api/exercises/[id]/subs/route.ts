@@ -36,6 +36,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         ? Number((rawWeight * LB_TO_KG).toFixed(3))
         : rawWeight;
 
+  const count = await SubExercise.countDocuments({ exerciseId: params.id });
   const sub = await SubExercise.create({
     exerciseId: params.id,
     username,
@@ -45,8 +46,34 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     weightKg,
     durationMinutes,
     inputUnit,
+    order: count,
   });
 
   return NextResponse.json(sub, { status: 201 });
+}
+
+export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+  await connectDB();
+  const body = await req.json();
+  const subIds = Array.isArray(body?.subIds) ? body.subIds.map((id: unknown) => String(id)) : [];
+
+  if (!subIds.length) {
+    return NextResponse.json({ error: "subIds is required" }, { status: 400 });
+  }
+
+  const existingSubs = await SubExercise.find({ exerciseId: params.id, _id: { $in: subIds } }, { _id: 1 }).lean();
+  if (existingSubs.length !== subIds.length) {
+    return NextResponse.json({ error: "Invalid subIds" }, { status: 400 });
+  }
+
+  await Promise.all(
+    subIds.map((sid, index) =>
+      SubExercise.findByIdAndUpdate(sid, {
+        order: index,
+      }),
+    ),
+  );
+
+  return NextResponse.json({ ok: true });
 }
 
