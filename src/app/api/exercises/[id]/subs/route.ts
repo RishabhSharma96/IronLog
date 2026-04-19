@@ -55,7 +55,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   await connectDB();
   const body = await req.json();
-  const subIds = Array.isArray(body?.subIds) ? body.subIds.map((id: unknown) => String(id)) : [];
+  const subIds: string[] = Array.isArray(body?.subIds) ? body.subIds.map((id: unknown) => String(id)) : [];
 
   if (!subIds.length) {
     return NextResponse.json({ error: "subIds is required" }, { status: 400 });
@@ -67,7 +67,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 
   await Promise.all(
-    subIds.map((sid, index) =>
+    subIds.map((sid: string, index: number) =>
       SubExercise.findByIdAndUpdate(sid, {
         order: index,
       }),
