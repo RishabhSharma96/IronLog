@@ -27,6 +27,13 @@ type InvidiousPlaylist = {
   videos: InvidiousVideo[];
 };
 
+function toAbsoluteUrl(url: string, videoId: string): string {
+  if (!url) return `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+  if (url.startsWith("http")) return url;
+  if (url.startsWith("//")) return `https:${url}`;
+  return `https://i.ytimg.com${url}`;
+}
+
 async function fetchPage(instance: string, playlistId: string, page: number): Promise<InvidiousPlaylist | null> {
   try {
     const url = `${instance}/api/v1/playlists/${playlistId}?page=${page}`;
@@ -91,10 +98,11 @@ export async function GET(req: NextRequest) {
       videoId: v.videoId,
       title: v.title || "Unknown Track",
       duration: v.lengthSeconds || 0,
-      thumbnail:
+      thumbnail: toAbsoluteUrl(
         v.videoThumbnails?.find((t) => t.quality === "medium")?.url ||
         v.videoThumbnails?.[0]?.url ||
-        `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+        ""
+      , v.videoId),
       author: v.author || "",
     }));
 

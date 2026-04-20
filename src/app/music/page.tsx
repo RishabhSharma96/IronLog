@@ -46,6 +46,31 @@ function saveLS(key: string, data: unknown) {
   try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* quota */ }
 }
 
+function TrackThumb({ src, size = "md" }: { src: string; size?: "sm" | "md" }) {
+  const [failed, setFailed] = useState(false);
+  const dim = size === "sm" ? "h-9 w-9" : "h-16 w-16";
+  const iconSize = size === "sm" ? "h-4 w-4" : "h-6 w-6";
+
+  if (failed || !src) {
+    return (
+      <div className={`${dim} flex items-center justify-center rounded-sm border border-slate-border/50 bg-slate-mid`}>
+        <Music className={`${iconSize} text-neon/40`} />
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      className={`${dim} rounded-sm border border-slate-border/50 object-cover`}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function formatDuration(s: number) {
   if (!s || s <= 0) return "--:--";
   const m = Math.floor(s / 60);
@@ -367,13 +392,12 @@ export default function MusicPage() {
               {/* Track info */}
               <div className="mb-4 flex items-start gap-4">
                 <motion.div
-                  className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-sm border border-slate-border/50"
+                  className="relative flex-shrink-0 overflow-hidden rounded-sm"
                   animate={playing ? { rotate: 360 } : { rotate: 0 }}
                   transition={playing ? { repeat: Infinity, duration: 8, ease: "linear" } : { duration: 0.3 }}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={currentTrack.thumbnail} alt="" className="h-full w-full object-cover" />
-                  <div className="absolute inset-0 flex items-center justify-center bg-void/40">
+                  <TrackThumb src={currentTrack.thumbnail} size="md" />
+                  <div className="absolute inset-0 flex items-center justify-center bg-void/40 rounded-sm">
                     <Disc3 className="h-6 w-6 text-neon/60" />
                   </div>
                 </motion.div>
@@ -517,10 +541,7 @@ export default function MusicPage() {
                     </button>
 
                     {/* Thumbnail */}
-                    <div className="h-9 w-9 flex-shrink-0 overflow-hidden rounded-sm border border-slate-border/30">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={track.thumbnail} alt="" className="h-full w-full object-cover" loading="lazy" />
-                    </div>
+                    <TrackThumb src={track.thumbnail} size="sm" />
 
                     {/* Info */}
                     <button type="button" onClick={() => playTrack(realIdx)} className="min-w-0 flex-1 text-left">
