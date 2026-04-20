@@ -11,9 +11,43 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
+type YouTubePlayer = {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
+  setVolume: (volume: number) => void;
+  mute: () => void;
+  unMute: () => void;
+  destroy: () => void;
+  getCurrentTime?: () => number;
+  getDuration?: () => number;
+};
+
+type YouTubeNamespace = {
+  Player: new (
+    elementId: string,
+    config: {
+      height: string;
+      width: string;
+      videoId: string;
+      playerVars: Record<string, number>;
+      events: {
+        onReady: (event: { target: YouTubePlayer }) => void;
+        onStateChange: (event: { data: number }) => void;
+      };
+    },
+  ) => YouTubePlayer;
+  PlayerState: {
+    ENDED: number;
+    PLAYING: number;
+    PAUSED: number;
+  };
+};
+
 declare global {
   interface Window {
     onYouTubeIframeAPIReady?: (() => void) | undefined;
+    YT?: YouTubeNamespace;
   }
 }
 
@@ -101,7 +135,7 @@ export default function MusicPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [apiReady, setApiReady] = useState(() => typeof window !== "undefined" && !!window.YT?.Player);
 
-  const playerRef = useRef<YT.Player | null>(null);
+  const playerRef = useRef<YouTubePlayer | null>(null);
   const progressTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const playAfterLoad = useRef(false);
 
@@ -150,6 +184,8 @@ export default function MusicPage() {
 
   const loadTrack = useCallback((track: Track, autoplay: boolean) => {
     if (!apiReady) return;
+    const yt = typeof window !== "undefined" ? window.YT : undefined;
+    if (!yt) return;
     if (playerRef.current) {
       try { playerRef.current.destroy(); } catch { /* ok */ }
       playerRef.current = null;
@@ -157,26 +193,26 @@ export default function MusicPage() {
     const el = document.getElementById("yt-music-frame");
     if (!el) return;
 
-    playerRef.current = new window.YT.Player("yt-music-frame", {
+    playerRef.current = new yt.Player("yt-music-frame", {
       height: "1",
       width: "1",
       videoId: track.videoId,
       playerVars: { autoplay: autoplay ? 1 : 0, controls: 0, disablekb: 1, fs: 0, modestbranding: 1, rel: 0, playsinline: 1 },
       events: {
-        onReady: (e: YT.PlayerEvent) => {
+        onReady: (e: { target: YouTubePlayer }) => {
           e.target.setVolume(volume);
           if (muted) e.target.mute();
           if (autoplay) { e.target.playVideo(); setPlaying(true); }
           startProgressTracking();
         },
-        onStateChange: (e: YT.OnStateChangeEvent) => {
-          if (e.data === window.YT.PlayerState.ENDED) {
+        onStateChange: (e: { data: number }) => {
+          if (e.data === yt.PlayerState.ENDED) {
             const next = pickNext(currentIdx);
             if (next >= 0) { setCurrentIdx(next); playAfterLoad.current = true; }
             else { setPlaying(false); setProgress(100); }
-          } else if (e.data === window.YT.PlayerState.PLAYING) {
+          } else if (e.data === yt.PlayerState.PLAYING) {
             setPlaying(true);
-          } else if (e.data === window.YT.PlayerState.PAUSED) {
+          } else if (e.data === yt.PlayerState.PAUSED) {
             setPlaying(false);
           }
         },

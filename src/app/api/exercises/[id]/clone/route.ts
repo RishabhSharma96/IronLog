@@ -5,12 +5,25 @@ import { sanitizeUsername } from "@/lib/session";
 import { Exercise } from "@/models/Exercise";
 import { SubExercise } from "@/models/SubExercise";
 
+type CloneSubInput = {
+  label?: unknown;
+  sets?: unknown;
+  reps?: unknown;
+  weightKg?: unknown;
+  durationMinutes?: unknown;
+  holdSeconds?: unknown;
+  inputUnit?: unknown;
+  notes?: unknown;
+  eachSide?: unknown;
+  order?: unknown;
+};
+
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   await connectDB();
   const body = await req.json();
   const username = sanitizeUsername(body?.username ?? "");
   const targetDay = String(body?.dayOfWeek ?? "");
-  const requestedSubs = Array.isArray(body?.subs) ? body.subs : null;
+  const requestedSubs: CloneSubInput[] | null = Array.isArray(body?.subs) ? (body.subs as CloneSubInput[]) : null;
 
   if (!username || !["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].includes(targetDay)) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
@@ -45,10 +58,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     order: targetCount,
   });
 
-  const sourceSubsFromDb = await SubExercise.find({ exerciseId: sourceExercise._id })
+  const sourceSubsFromDb = (await SubExercise.find({ exerciseId: sourceExercise._id })
     .sort({ order: 1, createdAt: 1 })
-    .lean();
-  const sourceSubs = requestedSubs && requestedSubs.length ? requestedSubs : sourceSubsFromDb;
+    .lean()) as unknown as CloneSubInput[];
+  const sourceSubs: CloneSubInput[] = requestedSubs && requestedSubs.length ? requestedSubs : sourceSubsFromDb;
 
   if (sourceSubs.length) {
     await SubExercise.insertMany(

@@ -447,8 +447,8 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                                   draggable
                                   onDragStart={() => setDraggingSub({ exerciseId: exercise._id, subId: sub._id })}
                                   onDragEnd={() => { setDraggingSub(null); setDragOverSubId(null); }}
-                                  onDragOver={(e) => { if (draggingSub?.exerciseId !== exercise._id || draggingSub.subId === sub._id) return; e.preventDefault(); setDragOverSubId(sub._id); }}
-                                  onDrop={(e) => { e.preventDefault(); if (draggingSub?.exerciseId !== exercise._id || draggingSub.subId === sub._id) return; void reorderSubs(exercise._id, draggingSub.subId, sub._id); setDraggingSub(null); setDragOverSubId(null); }}
+                                  onDragOver={(e: React.DragEvent<HTMLDivElement>) => { if (draggingSub?.exerciseId !== exercise._id || draggingSub.subId === sub._id) return; e.preventDefault(); setDragOverSubId(sub._id); }}
+                                  onDrop={(e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); if (draggingSub?.exerciseId !== exercise._id || draggingSub.subId === sub._id) return; void reorderSubs(exercise._id, draggingSub.subId, sub._id); setDraggingSub(null); setDragOverSubId(null); }}
                                   className={`relative px-5 py-3 ${dragOverSubId === sub._id ? "bg-[rgba(0,240,255,0.05)]" : "hover:bg-[rgba(28,34,46,0.5)]"}`}
                                   whileDrag={{ scale: 1.03, boxShadow: "0 0 40px rgba(0,240,255,0.2)", zIndex: 50 }}
                                   initial={{ opacity: 0, x: -8 }}
