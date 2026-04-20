@@ -1,17 +1,20 @@
 import type { Metadata } from "next";
-import { Bebas_Neue, DM_Sans } from "next/font/google";
+import { Rajdhani, Orbitron } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 
-const bebas = Bebas_Neue({
-  weight: "400",
-  variable: "--font-heading",
+const rajdhani = Rajdhani({
+  variable: "--font-rajdhani",
   subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
 });
 
-const dmSans = DM_Sans({
-  variable: "--font-body",
+const orbitron = Orbitron({
+  variable: "--font-orbitron",
   subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "700", "900"],
 });
 
 export const metadata: Metadata = {
@@ -25,10 +28,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${bebas.variable} ${dmSans.variable}`}>
-      <body className="min-h-screen bg-[#0f0f0f] font-sans text-zinc-100">
+    <html lang="en" className={`${rajdhani.variable} ${orbitron.variable}`}>
+      <body className="min-h-screen font-sans text-light antialiased">
         {children}
-        <Toaster theme="dark" richColors />
+        <Toaster
+          theme="dark"
+          richColors
+          toastOptions={{
+            style: {
+              background: "#0f1118",
+              border: "1px solid rgba(0, 240, 255, 0.15)",
+              color: "#d8ddf0",
+              fontFamily: "Rajdhani, sans-serif",
+            },
+          }}
+        />
       </body>
     </html>
   );

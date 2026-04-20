@@ -1,45 +1,196 @@
 "use client";
 
+import { useId, useMemo } from "react";
+import { motion } from "framer-motion";
+
 type ProgressChartProps = {
   values: number[];
+  dates?: string[];
   suffix?: string;
 };
 
-export function ProgressChart({ values, suffix = "" }: ProgressChartProps) {
-  const cleanValues = values.filter((value) => Number.isFinite(value));
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  const day = d.getDate();
+  const mon = d.toLocaleString("en", { month: "short" }).toUpperCase();
+  return `${day} ${mon}`;
+}
+
+export function ProgressChart({ values, dates, suffix = "" }: ProgressChartProps) {
+  const gradientId = useId();
+  const glowId = useId();
+
+  const { cleanValues, cleanDates } = useMemo(() => {
+    const cv: number[] = [];
+    const cd: string[] = [];
+    values.forEach((v, i) => {
+      if (Number.isFinite(v)) {
+        cv.push(v);
+        cd.push(dates?.[i] ?? "");
+      }
+    });
+    return { cleanValues: cv, cleanDates: cd };
+  }, [values, dates]);
+
+  const hasDates = cleanDates.some((d) => d.length > 0);
+
+  const { width, height, points, areaPoints, dateLabels } = useMemo(() => {
+    const w = 280;
+    const chartH = 72;
+    const labelH = hasDates ? 16 : 0;
+    const h = chartH + labelH;
+    const p = 10;
+    const bottomY = chartH - p;
+
+    if (!cleanValues.length) {
+      return { width: w, height: h, points: "", areaPoints: "", dateLabels: [] as { x: number; label: string }[] };
+    }
+
+    let xPositions: number[];
+
+    if (hasDates && cleanDates.length > 1) {
+      const timestamps = cleanDates.map((d) => new Date(d).getTime());
+      const minT = Math.min(...timestamps);
+      const maxT = Math.max(...timestamps);
+      const range = Math.max(maxT - minT, 1);
+      xPositions = timestamps.map((t) => p + ((t - minT) / range) * (w - p * 2));
+    } else {
+      xPositions = cleanValues.map((_, i) =>
+        p + (i * (w - p * 2)) / Math.max(cleanValues.length - 1, 1)
+      );
+    }
+
+    const mn = Math.min(...cleanValues);
+    const mx = Math.max(...cleanValues);
+    const rng = Math.max(mx - mn, 1);
+
+    const pts = cleanValues
+      .map((value, i) => {
+        const y = bottomY - ((value - mn) / rng) * (chartH - p * 2);
+        return `${xPositions[i]},${y}`;
+      })
+      .join(" ");
+
+    const area = `${xPositions[0]},${bottomY} ${pts} ${xPositions[xPositions.length - 1]},${bottomY}`;
+
+    const labels: { x: number; label: string }[] = [];
+    if (hasDates && cleanDates.length > 1) {
+      const maxLabels = 5;
+      const step = Math.max(1, Math.floor(cleanDates.length / maxLabels));
+      for (let i = 0; i < cleanDates.length; i += step) {
+        if (cleanDates[i]) labels.push({ x: xPositions[i], label: formatDate(cleanDates[i]) });
+      }
+      const lastIdx = cleanDates.length - 1;
+      if (lastIdx % step !== 0 && cleanDates[lastIdx]) {
+        labels.push({ x: xPositions[lastIdx], label: formatDate(cleanDates[lastIdx]) });
+      }
+    } else if (hasDates && cleanDates.length === 1 && cleanDates[0]) {
+      labels.push({ x: w / 2, label: formatDate(cleanDates[0]) });
+    }
+
+    return { width: w, height: h, points: pts, areaPoints: area, dateLabels: labels };
+  }, [cleanValues, cleanDates, hasDates]);
+
+  const pathKey = cleanValues.join(",");
+  const chartH = hasDates ? height - 16 : height;
 
   if (!cleanValues.length) {
-    return <p className="text-xs text-zinc-500">No data yet</p>;
+    return <p className="font-mono text-[10px] tracking-wider text-muted">NO DATA LOGGED</p>;
   }
 
-  const width = 240;
-  const height = 72;
-  const pad = 8;
-  const min = Math.min(...cleanValues);
-  const max = Math.max(...cleanValues);
-  const range = Math.max(max - min, 1);
-
-  const points = cleanValues
-    .map((value, index) => {
-      const x = pad + (index * (width - pad * 2)) / Math.max(cleanValues.length - 1, 1);
-      const y = height - pad - ((value - min) / range) * (height - pad * 2);
-      return `${x},${y}`;
-    })
-    .join(" ");
-
   return (
-    <div className="space-y-1">
-      <svg viewBox={`0 0 ${width} ${height}`} className="h-[72px] w-full rounded-md bg-zinc-900">
+    <div className="space-y-1.5">
+      <svg viewBox={`0 0 ${width} ${height}`} className={`w-full overflow-hidden rounded-sm border border-slate-border/30 bg-abyss/60 ${hasDates ? "h-[88px]" : "h-[72px]"}`}>
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#00f0ff" stopOpacity="0" />
+          </linearGradient>
+          <filter id={glowId}>
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
         {cleanValues.length > 1 ? (
-          <polyline fill="none" stroke="#b9ff66" strokeWidth="2.5" points={points} />
+          <>
+            <motion.polygon
+              key={`area-${pathKey}`}
+              fill={`url(#${gradientId})`}
+              points={areaPoints}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6 }}
+            />
+            <motion.polyline
+              key={`line-${pathKey}`}
+              fill="none"
+              stroke="#00f0ff"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              points={points}
+              initial={{ pathLength: 0, opacity: 0.4 }}
+              animate={{ pathLength: 1, opacity: 1 }}
+              transition={{ pathLength: { duration: 1.2, ease: [0.22, 1, 0.36, 1] }, opacity: { duration: 0.3 } }}
+              filter={`url(#${glowId})`}
+            />
+            {/* Data point dots */}
+            {cleanValues.length <= 20 && cleanValues.map((_, i) => {
+              const [cx, cy] = (points.split(" ")[i] ?? "0,0").split(",").map(Number);
+              return (
+                <circle
+                  key={`pt-${i}`}
+                  cx={cx}
+                  cy={cy}
+                  r="2"
+                  fill="#00f0ff"
+                  opacity="0.6"
+                />
+              );
+            })}
+          </>
         ) : (
-          <circle cx={width / 2} cy={height / 2} r="4" fill="#b9ff66" />
+          <motion.circle
+            key={`dot-${pathKey}`}
+            cx={width / 2}
+            cy={chartH / 2}
+            r="4"
+            fill="#00f0ff"
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ type: "spring", stiffness: 420, damping: 22 }}
+            style={{ filter: "drop-shadow(0 0 6px rgba(0,240,255,0.6))" }}
+          />
         )}
+        {/* Date labels */}
+        {dateLabels.map((dl, i) => (
+          <text
+            key={i}
+            x={dl.x}
+            y={height - 3}
+            textAnchor="middle"
+            fill="rgba(90,95,120,0.8)"
+            fontSize="7"
+            fontFamily="Orbitron, monospace"
+          >
+            {dl.label}
+          </text>
+        ))}
       </svg>
-      <p className="text-xs text-zinc-500">
-        {cleanValues.at(-1)}
-        {suffix} latest
-      </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-wider text-muted">
+          <span className="text-neon neon-text">{cleanValues.at(-1)}</span>
+          <span>{suffix} LATEST</span>
+        </div>
+        {hasDates && cleanDates.length > 1 && (
+          <span className="font-mono text-[9px] tracking-wider text-steel">
+            {cleanDates.length} ENTRIES
+          </span>
+        )}
+      </div>
     </div>
   );
 }
