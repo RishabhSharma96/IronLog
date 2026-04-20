@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Rajdhani, Orbitron } from "next/font/google";
 import { Toaster } from "sonner";
+import { MusicPlayer } from "@/components/music-player";
 import "./globals.css";
 
 const rajdhani = Rajdhani({
@@ -31,6 +32,7 @@ export default function RootLayout({
     <html lang="en" className={`${rajdhani.variable} ${orbitron.variable}`}>
       <body className="min-h-screen font-sans text-light antialiased">
         {children}
+        <MusicPlayer />
         <Toaster
           theme="dark"
           richColors

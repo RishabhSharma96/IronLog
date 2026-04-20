@@ -4,7 +4,7 @@
 import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogOut, Shield, Swords, TrendingUp, Target, Zap, Activity, Dumbbell } from "lucide-react";
+import { LogOut, Shield, Swords, TrendingUp, Target, Zap, Activity, Dumbbell, Music } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -160,9 +160,16 @@ export function DashboardOverviewClient({ username }: { username: string }) {
               </div>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={logout}>
-            <LogOut className="h-3.5 w-3.5" /> LOGOUT
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/music">
+              <Button variant="ghost" size="sm">
+                <Music className="h-3.5 w-3.5" /> MUSIC
+              </Button>
+            </Link>
+            <Button variant="ghost" size="sm" onClick={logout}>
+              <LogOut className="h-3.5 w-3.5" /> LOGOUT
+            </Button>
+          </div>
         </motion.header>
 
         {/* Player Stats Bar */}
