@@ -1,20 +1,129 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-body);
+  --font-sans: "Rajdhani", system-ui, sans-serif;
+  --font-mono: "Orbitron", "Share Tech Mono", ui-monospace, monospace;
+
+  --color-void: #05060a;
+  --color-abyss: #0a0c12;
+  --color-slate-deep: #0f1118;
+  --color-slate-mid: #161822;
+  --color-slate-light: #1e2130;
+  --color-slate-border: #2a2d3e;
+  --color-steel: #3d4158;
+  --color-muted: #5a5f78;
+  --color-dim: #8489a3;
+  --color-soft: #b0b5cc;
+  --color-light: #d8ddf0;
+  --color-bright: #eef0fa;
+
+  --color-neon: #00f0ff;
+  --color-neon-dim: #00c4d4;
+  --color-neon-glow: rgba(0, 240, 255, 0.15);
+  --color-plasma: #a855f7;
+  --color-plasma-glow: rgba(168, 85, 247, 0.15);
+  --color-xp: #facc15;
+  --color-xp-glow: rgba(250, 204, 21, 0.2);
+  --color-hp: #ef4444;
+  --color-crit: #22d3ee;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: #0f0f0f;
-  color: #f4f4f5;
+  background: var(--color-void);
+  color: var(--color-light);
+  position: relative;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-heading), sans-serif;
-  letter-spacing: 0.03em;
+/* Layered background: radial glows + animated grid */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  background:
+    radial-gradient(ellipse 60% 40% at 20% 0%, rgba(0, 240, 255, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 50% 50% at 80% 100%, rgba(168, 85, 247, 0.04) 0%, transparent 50%),
+    linear-gradient(180deg, var(--color-void) 0%, var(--color-abyss) 100%);
+  pointer-events: none;
+}
+
+/* Perspective grid floor */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  opacity: 0.04;
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.4) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.4) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: linear-gradient(to bottom, transparent 10%, white 40%, white 60%, transparent 90%);
+  pointer-events: none;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-sans);
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+::selection {
+  background: rgba(0, 240, 255, 0.3);
+  color: white;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0, 240, 255, 0.15); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 240, 255, 0.3); }
+
+button:not(:disabled), a[href], [role="button"] {
+  @apply transition-all duration-150 ease-out;
+}
+
+/* HUD corner clip for cards */
+.hud-clip {
+  clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px));
+}
+
+/* Scanline overlay utility */
+.scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 240, 255, 0.015) 2px,
+    rgba(0, 240, 255, 0.015) 4px
+  );
+  z-index: 1;
+}
+
+/* Neon text glow */
+.neon-text {
+  text-shadow: 0 0 7px rgba(0, 240, 255, 0.5), 0 0 20px rgba(0, 240, 255, 0.2);
+}
+
+/* XP bar glow */
+.xp-glow {
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.4), inset 0 0 4px rgba(250, 204, 21, 0.1);
+}
+
+@keyframes pulse-neon {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes data-stream {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 60px; }
 }
