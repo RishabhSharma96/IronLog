@@ -23,6 +23,7 @@ export async function PUT(req: NextRequest, { params }: { params: { sid: string 
   const sets = toNumberOrNull(body?.sets);
   const reps = toNumberOrNull(body?.reps);
   const durationMinutes = toNumberOrNull(body?.durationMinutes);
+  const holdSeconds = toNumberOrNull(body?.holdSeconds);
   const rawWeight = toNumberOrNull(body?.weight);
   const weightKg =
     inputUnit === "minutes" || rawWeight === null
@@ -39,7 +40,10 @@ export async function PUT(req: NextRequest, { params }: { params: { sid: string 
       reps,
       weightKg,
       durationMinutes,
+      holdSeconds,
       inputUnit,
+      notes: String(body?.notes ?? "").trim(),
+      eachSide: Boolean(body?.eachSide),
     },
     { new: true },
   );

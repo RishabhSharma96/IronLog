@@ -19,6 +19,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const inputUnit = String(body?.inputUnit ?? "");
   const username = sanitizeUsername(body?.username ?? "");
   const label = String(body?.label ?? "").trim();
+  const notes = String(body?.notes ?? "").trim();
+  const eachSide = Boolean(body?.eachSide);
 
   if (!username || !["kg", "lbs", "minutes"].includes(inputUnit)) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
@@ -27,6 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const sets = toNumberOrNull(body?.sets);
   const reps = toNumberOrNull(body?.reps);
   const durationMinutes = toNumberOrNull(body?.durationMinutes);
+  const holdSeconds = toNumberOrNull(body?.holdSeconds);
   const rawWeight = toNumberOrNull(body?.weight);
 
   const weightKg =
@@ -45,7 +48,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     reps,
     weightKg,
     durationMinutes,
+    holdSeconds,
     inputUnit,
+    notes,
+    eachSide,
     order: count,
   });
 

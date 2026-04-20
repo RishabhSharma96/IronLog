@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { Pencil, Trash2, LogOut, GripVertical, Shield, ArrowLeft, Target, Swords, Zap } from "lucide-react";
+import { Pencil, Trash2, LogOut, GripVertical, Shield, ArrowLeft, Target, Swords, Zap, ArrowUp, ArrowDown, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,7 +23,10 @@ type SubExercise = {
   reps: number | null;
   weightKg: number | null;
   durationMinutes: number | null;
+  holdSeconds: number | null;
   inputUnit: "kg" | "lbs" | "minutes";
+  notes: string;
+  eachSide: boolean;
   order?: number;
   createdAt?: string;
 };
@@ -34,6 +37,7 @@ type Exercise = {
   dayOfWeek: DayKey;
   week: number;
   year: number;
+  order?: number;
   subs: SubExercise[];
 };
 
@@ -41,12 +45,25 @@ type Props = { username: string; initialDay?: DayKey; singleDayMode?: boolean };
 type Unit = "kg" | "lbs" | "minutes";
 
 const LB_TO_KG = 0.453592;
-const blankSubForm = { label: "", sets: "", reps: "", weight: "", durationMinutes: "", inputUnit: "kg" as Unit };
+const blankSubForm = {
+  label: "",
+  sets: "",
+  reps: "",
+  weight: "",
+  durationMinutes: "",
+  holdSeconds: "",
+  notes: "",
+  eachSide: false,
+  inputUnit: "kg" as Unit,
+};
 
 function subLabel(sub: SubExercise) {
+  if (!["kg", "lbs", "minutes"].includes(sub.inputUnit)) return "";
   if (sub.inputUnit === "minutes") return `${sub.durationMinutes ?? 0} MIN`;
-  const parts = [`${sub.sets ?? 0}×${sub.reps ?? 0}`];
+  const parts = [`${sub.reps ?? 0}x${sub.sets ?? 0}`];
+  if (typeof sub.holdSeconds === "number" && sub.holdSeconds > 0) parts.push(`HOLD ${sub.holdSeconds}s`);
   if (typeof sub.weightKg === "number") parts.push(`${sub.weightKg}KG`);
+  if (sub.eachSide) parts.push("Each side");
   return parts.join(" @ ");
 }
 
@@ -77,6 +94,8 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
   const [entryTriggers, setEntryTriggers] = useState<Record<string, number>>({});
   const [deleteTriggers, setDeleteTriggers] = useState<Record<string, number>>({});
   const [poweringDown, setPoweringDown] = useState(false);
+  const [cloneSourceExercise, setCloneSourceExercise] = useState<Exercise | null>(null);
+  const [cloneSubmittingDay, setCloneSubmittingDay] = useState<DayKey | null>(null);
 
   async function loadExercises() { setLoading(true); const res = await fetch(`/api/exercises?username=${username}`); setExercises(await res.json()); setLoading(false); }
   async function loadExerciseNames() { const res = await fetch(`/api/exercises/names?username=${username}`); setPastNames(await res.json()); }
@@ -105,17 +124,94 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
     toast.success("Quest removed"); await loadExercises();
   }
 
+  async function cloneExerciseToDay(targetDay: DayKey) {
+    if (!cloneSourceExercise) return;
+    setCloneSubmittingDay(targetDay);
+    const res = await fetch(`/api/exercises/${cloneSourceExercise._id}/clone`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, dayOfWeek: targetDay }),
+    });
+
+    if (!res.ok) {
+      toast.error("Failed to clone quest");
+      setCloneSubmittingDay(null);
+      return;
+    }
+
+    toast.success(`Quest cloned to ${DAY_LABELS[targetDay]}`);
+    setCloneSourceExercise(null);
+    setCloneSubmittingDay(null);
+    await loadExercises();
+  }
+
+  async function reorderExercises(day: DayKey, sourceExerciseId: string, targetExerciseId: string) {
+    if (sourceExerciseId === targetExerciseId) return;
+    const dayExercises = grouped[day];
+    const current = [...dayExercises];
+    const sourceIndex = current.findIndex((exercise) => exercise._id === sourceExerciseId);
+    const targetIndex = current.findIndex((exercise) => exercise._id === targetExerciseId);
+    if (sourceIndex < 0 || targetIndex < 0) return;
+
+    const [moved] = current.splice(sourceIndex, 1);
+    current.splice(targetIndex, 0, moved);
+
+    setExercises((prev) => {
+      const next = [...prev];
+      const currentById = new Map(current.map((exercise, index) => [exercise._id, { ...exercise, order: index }]));
+      return next.map((exercise) => currentById.get(exercise._id) ?? exercise);
+    });
+
+    const res = await fetch("/api/exercises", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, dayOfWeek: day, exerciseIds: current.map((exercise) => exercise._id) }),
+    });
+
+    if (!res.ok) {
+      toast.error("Quest reorder failed");
+      await loadExercises();
+      return;
+    }
+
+    toast.success("Quest order updated");
+    await loadExercises();
+  }
+
   function startSubForm(exerciseId: string, sub?: SubExercise) {
     setEditingSubId(sub?._id ?? null);
     setSubFormByExercise((prev) => ({
       ...prev,
-      [exerciseId]: sub ? { label: sub.label ?? "", sets: sub.sets?.toString() ?? "", reps: sub.reps?.toString() ?? "", weight: typeof sub.weightKg === "number" ? (sub.inputUnit === "lbs" ? (sub.weightKg / LB_TO_KG).toFixed(2) : sub.weightKg.toString()) : "", durationMinutes: sub.durationMinutes?.toString() ?? "", inputUnit: sub.inputUnit } : blankSubForm,
+      [exerciseId]: sub
+        ? {
+          label: sub.label ?? "",
+          sets: sub.sets?.toString() ?? "",
+          reps: sub.reps?.toString() ?? "",
+          weight: typeof sub.weightKg === "number" ? (sub.inputUnit === "lbs" ? (sub.weightKg / LB_TO_KG).toFixed(2) : sub.weightKg.toString()) : "",
+          durationMinutes: sub.durationMinutes?.toString() ?? "",
+          holdSeconds: sub.holdSeconds?.toString() ?? "",
+          notes: sub.notes ?? "",
+          eachSide: Boolean(sub.eachSide),
+          inputUnit: sub.inputUnit,
+        }
+        : blankSubForm,
     }));
   }
 
   async function saveSub(exerciseId: string) {
     const form = subFormByExercise[exerciseId] ?? blankSubForm;
-    const payload = { username, label: form.label, inputUnit: form.inputUnit, sets: form.inputUnit === "minutes" ? null : Number(form.sets || 0), reps: form.inputUnit === "minutes" ? null : Number(form.reps || 0), weight: form.inputUnit === "minutes" ? null : Number(form.weight || 0), durationMinutes: form.inputUnit === "minutes" ? Number(form.durationMinutes || 0) : null };
+    const payload = {
+      username,
+      label: form.label,
+      notes: form.notes,
+      eachSide: form.eachSide,
+      inputUnit: form.inputUnit,
+      sets: form.inputUnit === "minutes" ? null : Number(form.sets || 0),
+      reps: form.inputUnit === "minutes" ? null : Number(form.reps || 0),
+      weight: form.inputUnit === "minutes" ? null : Number(form.weight || 0),
+      durationMinutes: form.inputUnit === "minutes" ? Number(form.durationMinutes || 0) : null,
+      holdSeconds: form.inputUnit === "minutes" ? null : Number(form.holdSeconds || 0),
+    };
     const endpoint = editingSubId ? `/api/exercises/${exerciseId}/subs/${editingSubId}` : `/api/exercises/${exerciseId}/subs`;
     const res = await fetch(endpoint, { method: editingSubId ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) return toast.error("Failed to save entry");
@@ -144,7 +240,14 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
   const handleLogoutComplete = useCallback(() => { window.location.assign("/"); }, []);
   async function logout() { setPoweringDown(true); await fetch("/api/auth/logout", { method: "POST" }); }
 
-  const grouped = DAY_ORDER.reduce<Record<DayKey, Exercise[]>>((acc, day) => { acc[day] = exercises.filter((e) => e.dayOfWeek === day); return acc; }, { Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [] });
+  const grouped = DAY_ORDER.reduce<Record<DayKey, Exercise[]>>((acc, day) => {
+    acc[day] = exercises
+      .filter((exercise) => exercise.dayOfWeek === day)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    return acc;
+  }, { Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [] });
+
+  const activeDayQuestNames = grouped[activeDay].map((exercise) => exercise.name);
 
   return (
     <>
@@ -209,6 +312,28 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
           </motion.div>
         )}
 
+        <motion.div
+          className="mb-6 rounded-sm border border-slate-border/50 bg-slate-deep/70 px-4 py-3"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
+        >
+          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-neon/60">
+            {DAY_LABELS[activeDay]} Quest Queue
+          </p>
+          {activeDayQuestNames.length ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {activeDayQuestNames.map((name, index) => (
+                <span key={`${name}-${index}`} className="rounded-sm border border-neon/30 bg-neon/5 px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-soft">
+                  {name}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 font-mono text-[10px] tracking-wide text-muted">No quests planned for this day.</p>
+          )}
+        </motion.div>
+
         {/* Main Grid */}
         <div className={`grid gap-5 ${singleDayMode ? "" : "md:grid-cols-6"}`}>
           {(singleDayMode ? [activeDay] : DAY_ORDER).map((day) => {
@@ -262,7 +387,32 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                                     <p className="text-sm font-bold uppercase tracking-wide">{exercise.name}</p>
                                   </div>
                                   <div className="flex gap-0.5">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        const dayExercises = grouped[day];
+                                        const currentIndex = dayExercises.findIndex((item) => item._id === exercise._id);
+                                        if (currentIndex <= 0) return;
+                                        void reorderExercises(day, exercise._id, dayExercises[currentIndex - 1]._id);
+                                      }}
+                                    >
+                                      <ArrowUp className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        const dayExercises = grouped[day];
+                                        const currentIndex = dayExercises.findIndex((item) => item._id === exercise._id);
+                                        if (currentIndex < 0 || currentIndex >= dayExercises.length - 1) return;
+                                        void reorderExercises(day, exercise._id, dayExercises[currentIndex + 1]._id);
+                                      }}
+                                    >
+                                      <ArrowDown className="h-3 w-3" />
+                                    </Button>
                                     <Button size="sm" variant="ghost" onClick={() => { setEditingExerciseId(exercise._id); setEditingExerciseName(exercise.name); }}><Pencil className="h-3 w-3" /></Button>
+                                    <Button size="sm" variant="ghost" onClick={() => setCloneSourceExercise(exercise)}><Copy className="h-3 w-3" /></Button>
                                     <Button size="sm" variant="ghost" onClick={() => deleteExercise(exercise._id)}><Trash2 className="h-3 w-3 text-hp" /></Button>
                                   </div>
                                 </>
@@ -275,6 +425,7 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                             {exercise.subs.map((sub, index) => {
                               const progressOpen = Boolean(showProgressBySub[sub._id]);
                               const groupName = sub.label?.trim() || `Entry ${index + 1}`;
+                              const lineInfo = subLabel(sub);
                               const ordered = exercise.subs.filter((i, ii) => (i.label?.trim() || `Entry ${ii + 1}`) === groupName).sort((a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime());
                               const weightEntries = ordered.filter((i) => typeof i.weightKg === "number" && Number.isFinite(i.weightKg));
                               const weightPoints = weightEntries.map((i) => i.weightKg!);
@@ -292,7 +443,7 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                                   onDragEnd={() => { setDraggingSub(null); setDragOverSubId(null); }}
                                   onDragOver={(e) => { if (draggingSub?.exerciseId !== exercise._id || draggingSub.subId === sub._id) return; e.preventDefault(); setDragOverSubId(sub._id); }}
                                   onDrop={(e) => { e.preventDefault(); if (draggingSub?.exerciseId !== exercise._id || draggingSub.subId === sub._id) return; void reorderSubs(exercise._id, draggingSub.subId, sub._id); setDraggingSub(null); setDragOverSubId(null); }}
-                                  className={`relative px-5 py-3 transition-colors ${dragOverSubId === sub._id ? "bg-neon/5" : "hover:bg-slate-mid/50"}`}
+                                  className={`relative px-5 py-3 ${dragOverSubId === sub._id ? "bg-[rgba(0,240,255,0.05)]" : "hover:bg-[rgba(28,34,46,0.5)]"}`}
                                   whileDrag={{ scale: 1.03, boxShadow: "0 0 40px rgba(0,240,255,0.2)", zIndex: 50 }}
                                   initial={{ opacity: 0, x: -8 }}
                                   animate={{ opacity: 1, x: 0 }}
@@ -309,7 +460,12 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                                       <Button size="sm" variant="ghost" onClick={() => deleteSub(exercise._id, sub._id)}><Trash2 className="h-2.5 w-2.5 text-hp" /></Button>
                                     </div>
                                   </div>
-                                  <p className="mt-1 pl-5 font-mono text-[10px] tracking-wider text-muted">{subLabel(sub)}</p>
+                                  {lineInfo && (
+                                    <p className="mt-1 pl-5 font-mono text-[10px] tracking-wider text-muted">{lineInfo}</p>
+                                  )}
+                                  {sub.notes?.trim() && (
+                                    <p className="mt-1 pl-5 text-[11px] text-soft/80">{sub.notes}</p>
+                                  )}
                                   <div className="mt-2 pl-5">
                                     <Button size="sm" variant="outline" onClick={() => setShowProgressBySub((p) => ({ ...p, [sub._id]: !p[sub._id] }))}>
                                       <Zap className="h-2.5 w-2.5" /> {progressOpen ? "HIDE" : "STATS"}
@@ -362,11 +518,23 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                                   {form.inputUnit === "minutes" ? (
                                     <Input type="number" placeholder="DURATION (MIN)" value={form.durationMinutes} onChange={(e) => setSubFormByExercise((p) => ({ ...p, [exercise._id]: { ...form, durationMinutes: e.target.value } }))} />
                                   ) : (
-                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                      <Input type="number" placeholder="SETS" value={form.sets} onChange={(e) => setSubFormByExercise((p) => ({ ...p, [exercise._id]: { ...form, sets: e.target.value } }))} />
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                       <Input type="number" placeholder="REPS" value={form.reps} onChange={(e) => setSubFormByExercise((p) => ({ ...p, [exercise._id]: { ...form, reps: e.target.value } }))} />
+                                      <Input type="number" placeholder="SETS" value={form.sets} onChange={(e) => setSubFormByExercise((p) => ({ ...p, [exercise._id]: { ...form, sets: e.target.value } }))} />
                                       <Input type="number" placeholder={form.inputUnit === "lbs" ? "LBS" : "KG"} value={form.weight} onChange={(e) => setSubFormByExercise((p) => ({ ...p, [exercise._id]: { ...form, weight: e.target.value } }))} />
+                                      <Input type="number" placeholder="HOLD (SEC)" value={form.holdSeconds} onChange={(e) => setSubFormByExercise((p) => ({ ...p, [exercise._id]: { ...form, holdSeconds: e.target.value } }))} />
                                     </div>
+                                  )}
+                                  <Input placeholder="NOTES (OPTIONAL)" value={form.notes} onChange={(e) => setSubFormByExercise((p) => ({ ...p, [exercise._id]: { ...form, notes: e.target.value } }))} />
+                                  {form.inputUnit !== "minutes" && (
+                                    <label className="flex items-center gap-2 text-xs text-soft">
+                                      <input
+                                        type="checkbox"
+                                        checked={form.eachSide}
+                                        onChange={(e) => setSubFormByExercise((p) => ({ ...p, [exercise._id]: { ...form, eachSide: e.target.checked } }))}
+                                      />
+                                      Each side
+                                    </label>
                                   )}
                                   <div className="flex gap-2">
                                     <Button size="sm" onClick={() => saveSub(exercise._id)}>CONFIRM</Button>
@@ -404,7 +572,7 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
               <motion.button
                 type="button"
                 aria-label="Close"
-                className="absolute inset-0 bg-void/85 backdrop-blur-sm"
+                className="absolute inset-0 bg-[rgba(10,12,16,0.85)] backdrop-blur-sm"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -457,6 +625,69 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                       <Button variant="ghost" onClick={() => setAddExerciseDay(null)}>CANCEL</Button>
                     </div>
                   </motion.div>
+                </Card>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Clone quest modal */}
+        <AnimatePresence>
+          {cloneSourceExercise && (
+            <motion.div
+              className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              <motion.button
+                type="button"
+                aria-label="Close clone modal"
+                className="absolute inset-0 bg-[rgba(10,12,16,0.85)] backdrop-blur-sm"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => { if (!cloneSubmittingDay) setCloneSourceExercise(null); }}
+              />
+              <motion.div
+                className="relative z-10 w-full max-w-md px-4 pb-10 pt-2 sm:pb-4"
+                initial={{ y: "100%", opacity: 0.8, scale: 0.9 }}
+                animate={{ y: 0, opacity: 1, scale: 1 }}
+                exit={{ y: "100%", opacity: 0, scale: 0.9 }}
+                transition={springGame}
+              >
+                <Card className="relative overflow-hidden p-0">
+                  <div className="relative border-b border-slate-border/30 px-5 py-4">
+                    <div className="flex items-center gap-2">
+                      <Copy className="h-4 w-4 text-neon/60" />
+                      <h3 className="font-mono text-base font-bold uppercase tracking-[0.1em]">Clone Quest</h3>
+                    </div>
+                    <p className="mt-1 font-mono text-[9px] tracking-[0.2em] text-muted">{cloneSourceExercise.name.toUpperCase()}</p>
+                  </div>
+                  <div className="space-y-3 px-5 py-4">
+                    <p className="font-mono text-[10px] tracking-[0.18em] text-muted">SELECT TARGET DAY</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {DAY_ORDER.map((day) => (
+                        <Button
+                          key={day}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void cloneExerciseToDay(day)}
+                          disabled={Boolean(cloneSubmittingDay)}
+                        >
+                          {cloneSubmittingDay === day ? "..." : DAY_LABELS[day].slice(0, 3).toUpperCase()}
+                        </Button>
+                      ))}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setCloneSourceExercise(null)}
+                      disabled={Boolean(cloneSubmittingDay)}
+                    >
+                      CANCEL
+                    </Button>
+                  </div>
                 </Card>
               </motion.div>
             </motion.div>

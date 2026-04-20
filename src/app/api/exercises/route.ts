@@ -63,3 +63,32 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ...exercise.toObject(), subs: [] }, { status: 201 });
 }
 
+export async function PUT(req: NextRequest) {
+  await connectDB();
+  const body = await req.json();
+  const username = sanitizeUsername(body?.username ?? "");
+  const dayOfWeek = String(body?.dayOfWeek ?? "");
+  const exerciseIds: string[] = Array.isArray(body?.exerciseIds) ? body.exerciseIds.map((id: unknown) => String(id)) : [];
+
+  if (!username || !["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].includes(dayOfWeek) || !exerciseIds.length) {
+    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  }
+
+  const existing = await Exercise.find(
+    { username, dayOfWeek, _id: { $in: exerciseIds } },
+    { _id: 1 },
+  ).lean();
+
+  if (existing.length !== exerciseIds.length) {
+    return NextResponse.json({ error: "Invalid exerciseIds" }, { status: 400 });
+  }
+
+  await Promise.all(
+    exerciseIds.map((id, index) =>
+      Exercise.findByIdAndUpdate(id, { order: index }),
+    ),
+  );
+
+  return NextResponse.json({ ok: true });
+}
+
