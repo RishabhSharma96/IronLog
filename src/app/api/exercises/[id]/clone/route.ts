@@ -10,49 +10,59 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const body = await req.json();
   const username = sanitizeUsername(body?.username ?? "");
   const targetDay = String(body?.dayOfWeek ?? "");
+  const requestedSubs = Array.isArray(body?.subs) ? body.subs : null;
 
   if (!username || !["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].includes(targetDay)) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 
-  const sourceExercise = await Exercise.findOne({ _id: params.id, username }).lean();
+  const sourceExerciseRaw = await Exercise.findOne({ _id: params.id, username }).lean();
+  const sourceExercise = Array.isArray(sourceExerciseRaw) ? sourceExerciseRaw[0] : sourceExerciseRaw;
   if (!sourceExercise) {
     return NextResponse.json({ error: "Quest not found" }, { status: 404 });
+  }
+  const sourceWeek = typeof sourceExercise.week === "number" ? sourceExercise.week : 0;
+  const sourceYear = typeof sourceExercise.year === "number" ? sourceExercise.year : 0;
+  const sourceName = typeof sourceExercise.name === "string" ? sourceExercise.name : "";
+
+  if (!sourceWeek || !sourceYear || !sourceName) {
+    return NextResponse.json({ error: "Invalid source quest" }, { status: 400 });
   }
 
   const targetCount = await Exercise.countDocuments({
     username,
     dayOfWeek: targetDay,
-    week: sourceExercise.week,
-    year: sourceExercise.year,
+    week: sourceWeek,
+    year: sourceYear,
   });
 
   const clonedExercise = await Exercise.create({
     username,
-    name: sourceExercise.name,
+    name: sourceName,
     dayOfWeek: targetDay,
-    week: sourceExercise.week,
-    year: sourceExercise.year,
+    week: sourceWeek,
+    year: sourceYear,
     order: targetCount,
   });
 
-  const sourceSubs = await SubExercise.find({ exerciseId: sourceExercise._id })
+  const sourceSubsFromDb = await SubExercise.find({ exerciseId: sourceExercise._id })
     .sort({ order: 1, createdAt: 1 })
     .lean();
+  const sourceSubs = requestedSubs && requestedSubs.length ? requestedSubs : sourceSubsFromDb;
 
   if (sourceSubs.length) {
     await SubExercise.insertMany(
       sourceSubs.map((sub, index) => ({
         exerciseId: clonedExercise._id,
         username,
-        label: sub.label ?? "",
-        sets: sub.sets ?? null,
-        reps: sub.reps ?? null,
-        weightKg: sub.weightKg ?? null,
-        durationMinutes: sub.durationMinutes ?? null,
-        holdSeconds: sub.holdSeconds ?? null,
-        inputUnit: ["kg", "lbs", "minutes"].includes(sub.inputUnit) ? sub.inputUnit : "kg",
-        notes: sub.notes ?? "",
+        label: typeof sub.label === "string" ? sub.label : "",
+        sets: typeof sub.sets === "number" ? sub.sets : null,
+        reps: typeof sub.reps === "number" ? sub.reps : null,
+        weightKg: typeof sub.weightKg === "number" ? sub.weightKg : null,
+        durationMinutes: typeof sub.durationMinutes === "number" ? sub.durationMinutes : null,
+        holdSeconds: typeof sub.holdSeconds === "number" ? sub.holdSeconds : null,
+        inputUnit: ["kg", "lbs", "minutes"].includes(String(sub.inputUnit)) ? String(sub.inputUnit) : "kg",
+        notes: typeof sub.notes === "string" ? sub.notes : "",
         eachSide: Boolean(sub.eachSide),
         order: typeof sub.order === "number" ? sub.order : index,
       })),

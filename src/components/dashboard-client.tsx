@@ -130,7 +130,11 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
     const res = await fetch(`/api/exercises/${cloneSourceExercise._id}/clone`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, dayOfWeek: targetDay }),
+      body: JSON.stringify({
+        username,
+        dayOfWeek: targetDay,
+        subs: cloneSourceExercise.subs ?? [],
+      }),
     });
 
     if (!res.ok) {
@@ -139,7 +143,9 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
       return;
     }
 
-    toast.success(`Quest cloned to ${DAY_LABELS[targetDay]}`);
+    const data = await res.json();
+    const clonedSubCount = Number(data?.clonedSubCount ?? 0);
+    toast.success(`Quest cloned to ${DAY_LABELS[targetDay]} (${clonedSubCount} entries)`);
     setCloneSourceExercise(null);
     setCloneSubmittingDay(null);
     await loadExercises();
