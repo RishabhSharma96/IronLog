@@ -7,6 +7,8 @@ type ProgressChartProps = {
   values: number[];
   dates?: string[];
   suffix?: string;
+  /** Smaller sparkline: no labels/footer, for overview cards */
+  compact?: boolean;
 };
 
 function formatDate(iso: string) {
@@ -16,7 +18,7 @@ function formatDate(iso: string) {
   return `${day} ${mon}`;
 }
 
-export function ProgressChart({ values, dates, suffix = "" }: ProgressChartProps) {
+export function ProgressChart({ values, dates, suffix = "", compact = false }: ProgressChartProps) {
   const gradientId = useId();
   const glowId = useId();
 
@@ -33,17 +35,25 @@ export function ProgressChart({ values, dates, suffix = "" }: ProgressChartProps
   }, [values, dates]);
 
   const hasDates = cleanDates.some((d) => d.length > 0);
+  const showDateLabels = hasDates && !compact;
 
-  const { width, height, points, areaPoints, dateLabels } = useMemo(() => {
-    const w = 280;
-    const chartH = 72;
-    const labelH = hasDates ? 16 : 0;
+  const { width, height, points, areaPoints, dateLabels, chartInnerH } = useMemo(() => {
+    const w = compact ? 240 : 280;
+    const chartH = compact ? 36 : 72;
+    const labelH = showDateLabels ? 16 : 0;
     const h = chartH + labelH;
-    const p = 10;
+    const p = compact ? 5 : 10;
     const bottomY = chartH - p;
 
     if (!cleanValues.length) {
-      return { width: w, height: h, points: "", areaPoints: "", dateLabels: [] as { x: number; label: string }[] };
+      return {
+        width: w,
+        height: h,
+        points: "",
+        areaPoints: "",
+        dateLabels: [] as { x: number; label: string }[],
+        chartInnerH: chartH,
+      };
     }
 
     let xPositions: number[];
@@ -74,7 +84,7 @@ export function ProgressChart({ values, dates, suffix = "" }: ProgressChartProps
     const area = `${xPositions[0]},${bottomY} ${pts} ${xPositions[xPositions.length - 1]},${bottomY}`;
 
     const labels: { x: number; label: string }[] = [];
-    if (hasDates && cleanDates.length > 1) {
+    if (showDateLabels && cleanDates.length > 1) {
       const maxLabels = 5;
       const step = Math.max(1, Math.floor(cleanDates.length / maxLabels));
       for (let i = 0; i < cleanDates.length; i += step) {
@@ -84,23 +94,27 @@ export function ProgressChart({ values, dates, suffix = "" }: ProgressChartProps
       if (lastIdx % step !== 0 && cleanDates[lastIdx]) {
         labels.push({ x: xPositions[lastIdx], label: formatDate(cleanDates[lastIdx]) });
       }
-    } else if (hasDates && cleanDates.length === 1 && cleanDates[0]) {
+    } else if (showDateLabels && cleanDates.length === 1 && cleanDates[0]) {
       labels.push({ x: w / 2, label: formatDate(cleanDates[0]) });
     }
 
-    return { width: w, height: h, points: pts, areaPoints: area, dateLabels: labels };
-  }, [cleanValues, cleanDates, hasDates]);
+    return { width: w, height: h, points: pts, areaPoints: area, dateLabels: labels, chartInnerH: chartH };
+  }, [cleanValues, cleanDates, showDateLabels, compact, hasDates]);
 
   const pathKey = cleanValues.join(",");
-  const chartH = hasDates ? height - 16 : height;
+  const innerH = chartInnerH ?? (compact ? 36 : 72);
+  const chartPixelH = compact ? innerH : (showDateLabels ? height - 16 : height);
 
   if (!cleanValues.length) {
     return <p className="font-mono text-[10px] tracking-wider text-muted">NO DATA LOGGED</p>;
   }
 
   return (
-    <div className="space-y-1.5">
-      <svg viewBox={`0 0 ${width} ${height}`} className={`w-full overflow-hidden rounded-sm border border-slate-border/30 bg-abyss/60 ${hasDates ? "h-[88px]" : "h-[72px]"}`}>
+    <div className={compact ? "" : "space-y-1.5"}>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className={`w-full overflow-hidden rounded-sm border border-slate-border/30 bg-abyss/60 ${compact ? "h-11" : hasDates ? "h-[88px]" : "h-[72px]"}`}
+      >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#00f0ff" stopOpacity="0.2" />
@@ -128,7 +142,7 @@ export function ProgressChart({ values, dates, suffix = "" }: ProgressChartProps
               key={`line-${pathKey}`}
               fill="none"
               stroke="#00f0ff"
-              strokeWidth="2"
+              strokeWidth={compact ? 1.5 : 2}
               strokeLinecap="round"
               strokeLinejoin="round"
               points={points}
@@ -138,7 +152,7 @@ export function ProgressChart({ values, dates, suffix = "" }: ProgressChartProps
               filter={`url(#${glowId})`}
             />
             {/* Data point dots */}
-            {cleanValues.length <= 20 && cleanValues.map((_, i) => {
+            {!compact && cleanValues.length <= 20 && cleanValues.map((_, i) => {
               const [cx, cy] = (points.split(" ")[i] ?? "0,0").split(",").map(Number);
               return (
                 <circle
@@ -156,8 +170,8 @@ export function ProgressChart({ values, dates, suffix = "" }: ProgressChartProps
           <motion.circle
             key={`dot-${pathKey}`}
             cx={width / 2}
-            cy={chartH / 2}
-            r="4"
+            cy={chartPixelH / 2}
+            r={compact ? 3 : 4}
             fill="#00f0ff"
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -180,17 +194,19 @@ export function ProgressChart({ values, dates, suffix = "" }: ProgressChartProps
           </text>
         ))}
       </svg>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-wider text-muted">
-          <span className="text-neon neon-text">{cleanValues.at(-1)}</span>
-          <span>{suffix} LATEST</span>
+      {!compact && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 font-mono text-[10px] tracking-wider text-muted">
+            <span className="text-neon neon-text">{cleanValues.at(-1)}</span>
+            <span>{suffix} LATEST</span>
+          </div>
+          {hasDates && cleanDates.length > 1 && (
+            <span className="font-mono text-[9px] tracking-wider text-steel">
+              {cleanDates.length} ENTRIES
+            </span>
+          )}
         </div>
-        {hasDates && cleanDates.length > 1 && (
-          <span className="font-mono text-[9px] tracking-wider text-steel">
-            {cleanDates.length} ENTRIES
-          </span>
-        )}
-      </div>
+      )}
     </div>
   );
 }
