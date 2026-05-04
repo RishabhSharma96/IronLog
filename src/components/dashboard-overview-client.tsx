@@ -16,6 +16,11 @@ import {
 } from "@/components/motion";
 import { DAY_LABELS, DAY_ORDER, dayKeyToSlug, type DayKey } from "@/lib/week";
 import { METRICS_LIST, type MetricKey, METRICS, fromBaseUnit } from "@/lib/metrics";
+import {
+  countsFromExercises,
+  formatLocalYMD,
+  type QuestCountSnapshot,
+} from "@/lib/quest-count-history";
 
 type Exercise = { _id: string; dayOfWeek: DayKey; subs: { _id: string }[] };
 type MetricRow = { _id: string; metric: MetricKey; value: number; inputUnit: string; createdAt?: string };
@@ -46,6 +51,7 @@ function xpToLevel(xp: number) {
 export function DashboardOverviewClient({ username }: { username: string }) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [metricRows, setMetricRows] = useState<MetricRow[]>([]);
+  const [questHistory, setQuestHistory] = useState<QuestCountSnapshot[]>([]);
   const [mainTab, setMainTab] = useState<MainTab>("exercises");
   const [activeMetric, setActiveMetric] = useState<MetricKey>("weight");
   const [metricUnit, setMetricUnit] = useState<string>("kg");
@@ -56,10 +62,36 @@ export function DashboardOverviewClient({ username }: { username: string }) {
 
   const activeCfg = METRICS[activeMetric];
 
+  const loadQuestSnapshots = async () => {
+    const res = await fetch(`/api/quest-snapshots?username=${encodeURIComponent(username)}&days=90`);
+    const payload = await res.json();
+    const list = payload?.snapshots;
+    setQuestHistory(Array.isArray(list) ? list : []);
+  };
+
+  async function syncQuestSnapshotForExercises(list: Exercise[]) {
+    const counts = countsFromExercises(list);
+    const date = formatLocalYMD(new Date());
+    try {
+      const res = await fetch("/api/quest-snapshots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, date, counts }),
+      });
+      if (!res.ok) toast.error("Could not save quest history");
+    } catch {
+      toast.error("Could not save quest history");
+    } finally {
+      await loadQuestSnapshots();
+    }
+  }
+
   const loadExercises = async () => {
     const res = await fetch(`/api/exercises?username=${username}`);
     const data = await res.json();
-    setExercises(Array.isArray(data) ? data : []);
+    const next = Array.isArray(data) ? data : [];
+    setExercises(next);
+    await syncQuestSnapshotForExercises(next);
   };
 
   const loadMetrics = async () => {
@@ -302,6 +334,18 @@ export function DashboardOverviewClient({ username }: { username: string }) {
                                 <span className="text-muted">ENTRIES:</span>
                                 <span className="font-bold text-xp"><CountUp to={subCount} delay={0.7} /></span>
                               </div>
+                              {questHistory.length > 0 && (
+                                <div className="mt-3 border-t border-slate-border/25 pt-3">
+                                  <p className="mb-1.5 font-mono text-[9px] uppercase tracking-[0.15em] text-muted/90">
+                                    Quest count (daily)
+                                  </p>
+                                  <ProgressChart
+                                    compact
+                                    values={questHistory.map((s) => s.counts[day])}
+                                    dates={questHistory.map((s) => `${s.date}T12:00:00`)}
+                                  />
+                                </div>
+                              )}
                             </div>
                           </Card>
                         </HoverGlowCard>
