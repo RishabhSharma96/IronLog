@@ -15,6 +15,7 @@ import {
   SuccessFlash, ParticleBurst, XpPopup, PowerDown,
 } from "@/components/motion";
 import { DAY_LABELS, DAY_ORDER, type DayKey } from "@/lib/week";
+import { daySplitSubtitle, emptyDayLabels, mergeDayLabels, type DayLabelsMap } from "@/lib/day-labels";
 
 type SubExercise = {
   _id: string;
@@ -96,10 +97,22 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
   const [poweringDown, setPoweringDown] = useState(false);
   const [cloneSourceExercise, setCloneSourceExercise] = useState<Exercise | null>(null);
   const [cloneSubmittingDay, setCloneSubmittingDay] = useState<DayKey | null>(null);
+  const [dayLabels, setDayLabels] = useState<DayLabelsMap>(() => emptyDayLabels());
+
+  async function loadDayLabels() {
+    const res = await fetch(`/api/day-labels?username=${encodeURIComponent(username)}`);
+    const data = await res.json().catch(() => ({}));
+    setDayLabels(mergeDayLabels(data?.labels));
+  }
 
   async function loadExercises() { setLoading(true); const res = await fetch(`/api/exercises?username=${username}`); setExercises(await res.json()); setLoading(false); }
   async function loadExerciseNames() { const res = await fetch(`/api/exercises/names?username=${username}`); setPastNames(await res.json()); }
-  useEffect(() => { loadExercises(); loadExerciseNames(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => {
+    loadExercises();
+    loadExerciseNames();
+    loadDayLabels();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
+  }, []);
 
   async function addExercise() {
     if (!addExerciseDay || !exerciseName.trim()) return;
@@ -145,7 +158,8 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
 
     const data = await res.json();
     const clonedSubCount = Number(data?.clonedSubCount ?? 0);
-    toast.success(`Quest cloned to ${DAY_LABELS[targetDay]} (${clonedSubCount} entries)`);
+    const targetLabel = daySplitSubtitle(targetDay, dayLabels) ?? DAY_LABELS[targetDay];
+    toast.success(`Quest cloned to ${targetLabel} (${clonedSubCount} entries)`);
     setCloneSourceExercise(null);
     setCloneSubmittingDay(null);
     await loadExercises();
@@ -251,9 +265,10 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
       .filter((exercise) => exercise.dayOfWeek === day)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     return acc;
-  }, { Mon: [], Tue: [], Wed: [], Thu: [], Fri: [], Sat: [] });
+  }, Object.fromEntries(DAY_ORDER.map((d): [DayKey, Exercise[]] => [d, []])) as Record<DayKey, Exercise[]>);
 
   const activeDayQuestNames = grouped[activeDay].map((exercise) => exercise.name);
+  const activeDaySplit = daySplitSubtitle(activeDay, dayLabels);
 
   return (
     <>
@@ -276,6 +291,11 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
               <div>
                 <h1 className="font-mono text-xl font-black tracking-[0.06em] text-bright neon-text md:text-2xl">IRONLOG</h1>
                 <p className="font-mono text-[9px] tracking-[0.2em] text-muted">{singleDayMode ? `QUEST LOG: ${DAY_LABELS[activeDay].toUpperCase()}` : "MISSION CONTROL"}</p>
+                {singleDayMode && activeDaySplit && (
+                  <p className="mt-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] text-plasma/90">
+                    {activeDaySplit}
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -301,6 +321,7 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                     key={day}
                     type="button"
                     onClick={() => setActiveDay(day)}
+                    title={daySplitSubtitle(day, dayLabels) ? `${DAY_LABELS[day]} — ${daySplitSubtitle(day, dayLabels)}` : DAY_LABELS[day]}
                     className={`relative flex-1 rounded-sm px-1 py-2.5 font-mono text-[10px] font-bold uppercase tracking-wider ${isActive ? "text-void" : "text-muted hover:text-soft"}`}
                   >
                     {isActive && (
@@ -326,6 +347,9 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
         >
           <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-neon/60">
             {DAY_LABELS[activeDay]} Quest Queue
+            {activeDaySplit ? (
+              <> · <span className="text-plasma/95">{activeDaySplit}</span></>
+            ) : null}
           </p>
           {activeDayQuestNames.length ? (
             <div className="mt-2 flex flex-wrap gap-2">
@@ -344,16 +368,24 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
         <div className={`grid gap-5 ${singleDayMode ? "" : "md:grid-cols-6"}`}>
           {(singleDayMode ? [activeDay] : DAY_ORDER).map((day) => {
             const isHidden = day !== activeDay;
+            const daySplit = daySplitSubtitle(day, dayLabels);
             return (
               <section key={day} className={`${singleDayMode ? "block" : isHidden ? "hidden md:block" : "block"}`}>
                 <motion.div
-                  className="mb-3 flex items-center gap-2"
+                  className="mb-3 flex flex-col gap-0.5"
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.15 }}
                 >
-                  <Target className="h-3 w-3 text-neon/40" />
-                  <h2 className="font-mono text-[10px] uppercase tracking-[0.25em] text-neon/40">{DAY_LABELS[day]}</h2>
+                  <div className="flex items-center gap-2">
+                    <Target className="h-3 w-3 text-neon/40" />
+                    <h2 className="font-mono text-[10px] uppercase tracking-[0.25em] text-neon/40">{DAY_LABELS[day]}</h2>
+                  </div>
+                  {daySplit ? (
+                    <p className="font-mono text-[9px] uppercase tracking-[0.12em] text-plasma/95 pl-5">
+                      {daySplit}
+                    </p>
+                  ) : null}
                 </motion.div>
                 <StaggerContainer className="space-y-4">
                   {grouped[day].map((exercise) => {
@@ -673,18 +705,32 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                   </div>
                   <div className="space-y-3 px-5 py-4">
                     <p className="font-mono text-[10px] tracking-[0.18em] text-muted">SELECT TARGET DAY</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {DAY_ORDER.map((day) => (
+                    <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
+                      {DAY_ORDER.map((day) => {
+                        const split = daySplitSubtitle(day, dayLabels);
+                        return (
                         <Button
                           key={day}
                           size="sm"
                           variant="outline"
+                          className="flex flex-col gap-0 px-1 py-2 h-auto min-h-[2.75rem]"
+                          title={split ? `${DAY_LABELS[day]} — ${split}` : DAY_LABELS[day]}
                           onClick={() => void cloneExerciseToDay(day)}
                           disabled={Boolean(cloneSubmittingDay)}
                         >
-                          {cloneSubmittingDay === day ? "..." : DAY_LABELS[day].slice(0, 3).toUpperCase()}
+                          {cloneSubmittingDay === day ? "…" : (
+                            <>
+                              <span>{DAY_LABELS[day].slice(0, 3).toUpperCase()}</span>
+                              {split && (
+                                <span className="max-w-[4.25rem] truncate font-mono text-[8px] font-normal uppercase leading-tight tracking-tight text-plasma">
+                                  {split}
+                                </span>
+                              )}
+                            </>
+                          )}
                         </Button>
-                      ))}
+                        );
+                      })}
                     </div>
                     <Button
                       variant="ghost"

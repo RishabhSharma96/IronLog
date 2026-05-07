@@ -1,8 +1,9 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-export type DayKey = "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat";
+/** Monday → Sunday sequence (plans rest day on Sun or use Sun for workouts). */
+export const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
-export const DAY_ORDER: DayKey[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export type DayKey = (typeof DAY_ORDER)[number];
 
 export const DAY_LABELS: Record<DayKey, string> = {
   Mon: "Monday",
@@ -11,6 +12,18 @@ export const DAY_LABELS: Record<DayKey, string> = {
   Thu: "Thursday",
   Fri: "Friday",
   Sat: "Saturday",
+  Sun: "Sunday",
+};
+
+/** Short uppercase labels for HUD-style headers and charts */
+export const DAY_SHORT_LABELS: Record<DayKey, string> = {
+  Mon: "MON",
+  Tue: "TUE",
+  Wed: "WED",
+  Thu: "THU",
+  Fri: "FRI",
+  Sat: "SAT",
+  Sun: "SUN",
 };
 
 const DAY_TO_SLUG: Record<DayKey, string> = {
@@ -20,6 +33,7 @@ const DAY_TO_SLUG: Record<DayKey, string> = {
   Thu: "thu",
   Fri: "fri",
   Sat: "sat",
+  Sun: "sun",
 };
 
 const SLUG_TO_DAY: Record<string, DayKey> = {
@@ -29,7 +43,19 @@ const SLUG_TO_DAY: Record<string, DayKey> = {
   thu: "Thu",
   fri: "Fri",
   sat: "Sat",
+  sun: "Sun",
 };
+
+export function isValidDayKey(s: string): s is DayKey {
+  return (DAY_ORDER as readonly string[]).includes(s);
+}
+
+const daySortIndex = Object.fromEntries(DAY_ORDER.map((d, i) => [d, i])) as Record<DayKey, number>;
+
+/** Calendar order Mon → Sun */
+export function compareDayKeys(a: DayKey, b: DayKey): number {
+  return (daySortIndex[a] ?? 99) - (daySortIndex[b] ?? 99);
+}
 
 export function dayKeyToSlug(day: DayKey) {
   return DAY_TO_SLUG[day];
@@ -62,9 +88,9 @@ function mondayFromISOWeek(year: number, week: number) {
 export function weekRangeLabel(week: number, year: number) {
   const start = mondayFromISOWeek(year, week);
   const end = new Date(start);
-  end.setUTCDate(start.getUTCDate() + 5);
+  end.setUTCDate(start.getUTCDate() + 6);
 
   const startFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(start);
   const endFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(end);
-  return `Week of ${startFmt}-${endFmt}`;
+  return `Week of ${startFmt}–${endFmt}`;
 }

@@ -4,6 +4,7 @@ import { connectDB } from "@/lib/mongodb";
 import { sanitizeUsername } from "@/lib/session";
 import { Exercise } from "@/models/Exercise";
 import { SubExercise } from "@/models/SubExercise";
+import { isValidDayKey } from "@/lib/week";
 
 type CloneSubInput = {
   label?: unknown;
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const targetDay = String(body?.dayOfWeek ?? "");
   const requestedSubs: CloneSubInput[] | null = Array.isArray(body?.subs) ? (body.subs as CloneSubInput[]) : null;
 
-  if (!username || !["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].includes(targetDay)) {
+  if (!username || !isValidDayKey(targetDay)) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 

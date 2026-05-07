@@ -4,7 +4,18 @@
 import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { LogOut, Shield, Swords, TrendingUp, Target, Zap, Activity, Dumbbell, Music } from "lucide-react";
+import {
+  Activity,
+  Dumbbell,
+  LogOut,
+  Music,
+  Shield,
+  Swords,
+  Tag,
+  Target,
+  TrendingUp,
+  Zap,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -14,13 +25,14 @@ import {
   XpBar, fadeInUp, springGame, StaggerContainer, StaggerItem,
   CountUp, SuccessFlash, XpPopup, HoverGlowCard, PowerDown,
 } from "@/components/motion";
-import { DAY_LABELS, DAY_ORDER, dayKeyToSlug, type DayKey } from "@/lib/week";
+import { DAY_LABELS, DAY_ORDER, DAY_SHORT_LABELS, dayKeyToSlug, type DayKey } from "@/lib/week";
 import { METRICS_LIST, type MetricKey, METRICS, fromBaseUnit } from "@/lib/metrics";
 import {
   countsFromExercises,
   formatLocalYMD,
   type QuestCountSnapshot,
 } from "@/lib/quest-count-history";
+import { daySplitSubtitle, emptyDayLabels, mergeDayLabels, type DayLabelsMap } from "@/lib/day-labels";
 
 type Exercise = { _id: string; dayOfWeek: DayKey; subs: { _id: string }[] };
 type MetricRow = { _id: string; metric: MetricKey; value: number; inputUnit: string; createdAt?: string };
@@ -59,6 +71,8 @@ export function DashboardOverviewClient({ username }: { username: string }) {
   const [showProgress, setShowProgress] = useState<Record<MetricKey, boolean>>({} as Record<MetricKey, boolean>);
   const [logTrigger, setLogTrigger] = useState(0);
   const [poweringDown, setPoweringDown] = useState(false);
+  const [dayLabels, setDayLabels] = useState<DayLabelsMap>(() => emptyDayLabels());
+  const [dayLabelsSaving, setDayLabelsSaving] = useState(false);
 
   const activeCfg = METRICS[activeMetric];
 
@@ -100,9 +114,38 @@ export function DashboardOverviewClient({ username }: { username: string }) {
     setMetricRows(Array.isArray(data) ? data : []);
   };
 
+  const loadDayLabels = async () => {
+    const res = await fetch(`/api/day-labels?username=${encodeURIComponent(username)}`);
+    const data = await res.json().catch(() => ({}));
+    setDayLabels(mergeDayLabels(data?.labels));
+  };
+
+  async function saveDayLabels() {
+    setDayLabelsSaving(true);
+    try {
+      const res = await fetch("/api/day-labels", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, labels: dayLabels }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error ?? "Failed to save labels");
+        return;
+      }
+      setDayLabels(mergeDayLabels(data?.labels));
+      toast.success("Day split labels saved");
+    } catch {
+      toast.error("Failed to save labels");
+    } finally {
+      setDayLabelsSaving(false);
+    }
+  }
+
   useEffect(() => {
     loadExercises();
     loadMetrics();
+    loadDayLabels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -298,11 +341,50 @@ export function DashboardOverviewClient({ username }: { username: string }) {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
+              <Card className="mb-6 border-slate-border/40 bg-slate-deep/65 p-4">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-neon">
+                    <Tag className="h-3.5 w-3.5 text-neon/70" />
+                    Day split labels
+                  </div>
+                  <p className="max-w-xl font-mono text-[9px] tracking-wide text-muted">
+                    Optional names per weekday — e.g. Push day, Pull day, Leg day. Shown across HQ and mission log.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {DAY_ORDER.map((day) => (
+                    <div key={day} className="space-y-1">
+                      <label className="block font-mono text-[9px] uppercase tracking-wider text-muted" htmlFor={`split-${day}`}>
+                        {DAY_SHORT_LABELS[day]} · {DAY_LABELS[day]}
+                      </label>
+                      <Input
+                        id={`split-${day}`}
+                        value={dayLabels[day]}
+                        onChange={(e) =>
+                          setDayLabels((prev) => ({
+                            ...prev,
+                            [day]: e.target.value.slice(0, 48),
+                          }))
+                        }
+                        placeholder="Push day…"
+                        className="font-mono text-[11px]"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <Button type="button" size="sm" onClick={() => saveDayLabels()} disabled={dayLabelsSaving}>
+                    {dayLabelsSaving ? "SAVING…" : "SAVE LABELS"}
+                  </Button>
+                </div>
+              </Card>
+
               <StaggerContainer className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {DAY_ORDER.map((day) => {
                   const dayExercises = exercises.filter((e) => e.dayOfWeek === day);
                   const subCount = dayExercises.reduce((s, e) => s + e.subs.length, 0);
                   const hasQuests = dayExercises.length > 0;
+                  const splitLabel = daySplitSubtitle(day, dayLabels);
                   return (
                     <StaggerItem key={day}>
                       <Link href={`/dashboard/day/${dayKeyToSlug(day)}`} className="group block h-full">
@@ -322,7 +404,17 @@ export function DashboardOverviewClient({ username }: { username: string }) {
                               transition={{ duration: 0.6, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
                               style={{ transformOrigin: "top" }}
                             />
-                            <p className="text-lg font-bold uppercase tracking-wide">{DAY_LABELS[day]}</p>
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                              <span className="font-mono text-[11px] font-bold tracking-[0.2em] text-neon">
+                                {DAY_SHORT_LABELS[day]}
+                              </span>
+                              <p className="text-lg font-bold uppercase tracking-wide">{DAY_LABELS[day]}</p>
+                            </div>
+                            {splitLabel ? (
+                              <p className="mt-1 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-plasma">
+                                {splitLabel}
+                              </p>
+                            ) : null}
                             <div className="mt-3 space-y-1 font-mono text-[10px] tracking-wider">
                               <div className="flex items-center gap-2">
                                 <Target className="h-3 w-3 text-neon/60" />
@@ -341,6 +433,7 @@ export function DashboardOverviewClient({ username }: { username: string }) {
                                   </p>
                                   <ProgressChart
                                     compact
+                                    compactDateAxis
                                     values={questHistory.map((s) => s.counts[day])}
                                     dates={questHistory.map((s) => `${s.date}T12:00:00`)}
                                   />

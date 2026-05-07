@@ -9,6 +9,8 @@ type ProgressChartProps = {
   suffix?: string;
   /** Smaller sparkline: no labels/footer, for overview cards */
   compact?: boolean;
+  /** When compact, still show a small date strip (e.g. quest trend on day cards) */
+  compactDateAxis?: boolean;
 };
 
 function formatDate(iso: string) {
@@ -18,7 +20,13 @@ function formatDate(iso: string) {
   return `${day} ${mon}`;
 }
 
-export function ProgressChart({ values, dates, suffix = "", compact = false }: ProgressChartProps) {
+export function ProgressChart({
+  values,
+  dates,
+  suffix = "",
+  compact = false,
+  compactDateAxis = false,
+}: ProgressChartProps) {
   const gradientId = useId();
   const glowId = useId();
 
@@ -35,15 +43,18 @@ export function ProgressChart({ values, dates, suffix = "", compact = false }: P
   }, [values, dates]);
 
   const hasDates = cleanDates.some((d) => d.length > 0);
-  const showDateLabels = hasDates && !compact;
+  const compactAxis = compact && compactDateAxis;
+  const showDateAxisLabels = hasDates && (!compact || compactAxis);
 
-  const { width, height, points, areaPoints, dateLabels, chartInnerH } = useMemo(() => {
+  const { width, height, points, areaPoints, dateLabels, chartInnerH, labelFontSize } = useMemo(() => {
     const w = compact ? 240 : 280;
-    const chartH = compact ? 36 : 72;
-    const labelH = showDateLabels ? 16 : 0;
+    const chartH = compact ? (compactAxis ? 28 : 36) : 72;
+    const labelH =
+      showDateAxisLabels ? (compactAxis ? 12 : 16) : 0;
     const h = chartH + labelH;
     const p = compact ? 5 : 10;
     const bottomY = chartH - p;
+    const labelFont = compactAxis ? 6 : 7;
 
     if (!cleanValues.length) {
       return {
@@ -53,6 +64,7 @@ export function ProgressChart({ values, dates, suffix = "", compact = false }: P
         areaPoints: "",
         dateLabels: [] as { x: number; label: string }[],
         chartInnerH: chartH,
+        labelFontSize: labelFont,
       };
     }
 
@@ -66,7 +78,7 @@ export function ProgressChart({ values, dates, suffix = "", compact = false }: P
       xPositions = timestamps.map((t) => p + ((t - minT) / range) * (w - p * 2));
     } else {
       xPositions = cleanValues.map((_, i) =>
-        p + (i * (w - p * 2)) / Math.max(cleanValues.length - 1, 1)
+        p + (i * (w - p * 2)) / Math.max(cleanValues.length - 1, 1),
       );
     }
 
@@ -84,8 +96,8 @@ export function ProgressChart({ values, dates, suffix = "", compact = false }: P
     const area = `${xPositions[0]},${bottomY} ${pts} ${xPositions[xPositions.length - 1]},${bottomY}`;
 
     const labels: { x: number; label: string }[] = [];
-    if (showDateLabels && cleanDates.length > 1) {
-      const maxLabels = 5;
+    if (showDateAxisLabels && cleanDates.length > 1) {
+      const maxLabels = compactAxis ? 4 : 5;
       const step = Math.max(1, Math.floor(cleanDates.length / maxLabels));
       for (let i = 0; i < cleanDates.length; i += step) {
         if (cleanDates[i]) labels.push({ x: xPositions[i], label: formatDate(cleanDates[i]) });
@@ -94,16 +106,16 @@ export function ProgressChart({ values, dates, suffix = "", compact = false }: P
       if (lastIdx % step !== 0 && cleanDates[lastIdx]) {
         labels.push({ x: xPositions[lastIdx], label: formatDate(cleanDates[lastIdx]) });
       }
-    } else if (showDateLabels && cleanDates.length === 1 && cleanDates[0]) {
+    } else if (showDateAxisLabels && cleanDates.length === 1 && cleanDates[0]) {
       labels.push({ x: w / 2, label: formatDate(cleanDates[0]) });
     }
 
-    return { width: w, height: h, points: pts, areaPoints: area, dateLabels: labels, chartInnerH: chartH };
-  }, [cleanValues, cleanDates, showDateLabels, compact, hasDates]);
+    return { width: w, height: h, points: pts, areaPoints: area, dateLabels: labels, chartInnerH: chartH, labelFontSize: labelFont };
+  }, [cleanValues, cleanDates, showDateAxisLabels, compact, hasDates, compactAxis]);
 
   const pathKey = cleanValues.join(",");
   const innerH = chartInnerH ?? (compact ? 36 : 72);
-  const chartPixelH = compact ? innerH : (showDateLabels ? height - 16 : height);
+  const chartPixelH = compact ? innerH : (showDateAxisLabels ? height - (compactAxis ? 12 : 16) : height);
 
   if (!cleanValues.length) {
     return <p className="font-mono text-[10px] tracking-wider text-muted">NO DATA LOGGED</p>;
@@ -113,7 +125,7 @@ export function ProgressChart({ values, dates, suffix = "", compact = false }: P
     <div className={compact ? "" : "space-y-1.5"}>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className={`w-full overflow-hidden rounded-sm border border-slate-border/30 bg-abyss/60 ${compact ? "h-11" : hasDates ? "h-[88px]" : "h-[72px]"}`}
+        className={`w-full overflow-hidden rounded-sm border border-slate-border/30 bg-abyss/60 ${compact ? (compactAxis ? "h-[3.75rem]" : "h-11") : hasDates ? "h-[88px]" : "h-[72px]"}`}
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -187,7 +199,7 @@ export function ProgressChart({ values, dates, suffix = "", compact = false }: P
             y={height - 3}
             textAnchor="middle"
             fill="rgba(90,95,120,0.8)"
-            fontSize="7"
+            fontSize={labelFontSize}
             fontFamily="Orbitron, monospace"
           >
             {dl.label}

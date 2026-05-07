@@ -21,6 +21,16 @@ function normalizeCounts(raw: unknown): Record<DayKey, number> | null {
   return out;
 }
 
+/** Older documents may lack `Sun` or other keys; always return a full weekday map. */
+function coerceStoredCounts(raw: unknown): Record<DayKey, number> {
+  const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return DAY_ORDER.reduce((acc, key) => {
+    const n = Number(o[key]);
+    acc[key] = Number.isFinite(n) && n >= 0 && Number.isInteger(n) ? n : 0;
+    return acc;
+  }, {} as Record<DayKey, number>);
+}
+
 export async function GET(req: NextRequest) {
   await connectDB();
   const username = sanitizeUsername(req.nextUrl.searchParams.get("username") ?? "");
@@ -45,9 +55,9 @@ export async function GET(req: NextRequest) {
     .lean()
     .exec();
 
-  const snapshots = (rows as unknown as { date: string; counts: Record<DayKey, number> }[]).map((r) => ({
+  const snapshots = (rows as unknown as { date: string; counts: unknown }[]).map((r) => ({
     date: r.date,
-    counts: r.counts,
+    counts: coerceStoredCounts(r.counts),
   }));
 
   return NextResponse.json({ snapshots });
