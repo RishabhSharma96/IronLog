@@ -11,7 +11,6 @@ import {
   Music,
   Shield,
   Swords,
-  Tag,
   Target,
   TrendingUp,
   Zap,
@@ -72,7 +71,6 @@ export function DashboardOverviewClient({ username }: { username: string }) {
   const [logTrigger, setLogTrigger] = useState(0);
   const [poweringDown, setPoweringDown] = useState(false);
   const [dayLabels, setDayLabels] = useState<DayLabelsMap>(() => emptyDayLabels());
-  const [dayLabelsSaving, setDayLabelsSaving] = useState(false);
 
   const activeCfg = METRICS[activeMetric];
 
@@ -119,28 +117,6 @@ export function DashboardOverviewClient({ username }: { username: string }) {
     const data = await res.json().catch(() => ({}));
     setDayLabels(mergeDayLabels(data?.labels));
   };
-
-  async function saveDayLabels() {
-    setDayLabelsSaving(true);
-    try {
-      const res = await fetch("/api/day-labels", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, labels: dayLabels }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(data?.error ?? "Failed to save labels");
-        return;
-      }
-      setDayLabels(mergeDayLabels(data?.labels));
-      toast.success("Day split labels saved");
-    } catch {
-      toast.error("Failed to save labels");
-    } finally {
-      setDayLabelsSaving(false);
-    }
-  }
 
   useEffect(() => {
     loadExercises();
@@ -341,44 +317,6 @@ export function DashboardOverviewClient({ username }: { username: string }) {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
-              <Card className="mb-6 border-slate-border/40 bg-slate-deep/65 p-4">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.15em] text-neon">
-                    <Tag className="h-3.5 w-3.5 text-neon/70" />
-                    Day split labels
-                  </div>
-                  <p className="max-w-xl font-mono text-[9px] tracking-wide text-muted">
-                    Optional names per weekday — e.g. Push day, Pull day, Leg day. Shown across HQ and mission log.
-                  </p>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {DAY_ORDER.map((day) => (
-                    <div key={day} className="space-y-1">
-                      <label className="block font-mono text-[9px] uppercase tracking-wider text-muted" htmlFor={`split-${day}`}>
-                        {DAY_SHORT_LABELS[day]} · {DAY_LABELS[day]}
-                      </label>
-                      <Input
-                        id={`split-${day}`}
-                        value={dayLabels[day]}
-                        onChange={(e) =>
-                          setDayLabels((prev) => ({
-                            ...prev,
-                            [day]: e.target.value.slice(0, 48),
-                          }))
-                        }
-                        placeholder="Push day…"
-                        className="font-mono text-[11px]"
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 flex justify-end">
-                  <Button type="button" size="sm" onClick={() => saveDayLabels()} disabled={dayLabelsSaving}>
-                    {dayLabelsSaving ? "SAVING…" : "SAVE LABELS"}
-                  </Button>
-                </div>
-              </Card>
-
               <StaggerContainer className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {DAY_ORDER.map((day) => {
                   const dayExercises = exercises.filter((e) => e.dayOfWeek === day);
