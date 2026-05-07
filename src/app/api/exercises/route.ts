@@ -4,7 +4,7 @@ import { connectDB } from "@/lib/mongodb";
 import { sanitizeUsername } from "@/lib/session";
 import { Exercise } from "@/models/Exercise";
 import { SubExercise } from "@/models/SubExercise";
-import { getISOWeekYear } from "@/lib/week";
+import { compareDayKeys, getISOWeekYear, isValidDayKey } from "@/lib/week";
 
 export async function GET(req: NextRequest) {
   await connectDB();
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
     query.year = year;
   }
 
-  const exercises = await Exercise.find(query).sort({ dayOfWeek: 1, order: 1, createdAt: 1 }).lean();
+  const exercises = await Exercise.find(query).sort({ order: 1, createdAt: 1 }).lean();
   const exerciseIds = exercises.map((exercise) => exercise._id);
   const subs = await SubExercise.find({ exerciseId: { $in: exerciseIds } }).sort({ order: 1, createdAt: 1 }).lean();
 
@@ -34,7 +34,20 @@ export async function GET(req: NextRequest) {
     subMap.set(key, list);
   }
 
-  const payload = exercises.map((exercise) => ({
+  type LeanExercise = { _id: unknown; dayOfWeek: string; order?: number };
+
+  const daySorted = [...exercises].sort((a, b) => {
+    const lea = a as unknown as LeanExercise;
+    const leb = b as unknown as LeanExercise;
+    const da = String(lea.dayOfWeek ?? "");
+    const db = String(leb.dayOfWeek ?? "");
+    if (!isValidDayKey(da) || !isValidDayKey(db)) return 0;
+    const dow = compareDayKeys(da, db);
+    if (dow !== 0) return dow;
+    return (lea.order ?? 0) - (leb.order ?? 0);
+  });
+
+  const payload = daySorted.map((exercise) => ({
     ...exercise,
     subs: subMap.get(String(exercise._id)) ?? [],
   }));
@@ -53,7 +66,7 @@ export async function POST(req: NextRequest) {
   const week = Number(body?.week) || fallback.week;
   const year = Number(body?.year) || fallback.year;
 
-  if (!username || !name || !["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].includes(dayOfWeek) || !week || !year) {
+  if (!username || !name || !isValidDayKey(dayOfWeek) || !week || !year) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 
@@ -70,7 +83,7 @@ export async function PUT(req: NextRequest) {
   const dayOfWeek = String(body?.dayOfWeek ?? "");
   const exerciseIds: string[] = Array.isArray(body?.exerciseIds) ? body.exerciseIds.map((id: unknown) => String(id)) : [];
 
-  if (!username || !["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].includes(dayOfWeek) || !exerciseIds.length) {
+  if (!username || !isValidDayKey(dayOfWeek) || !exerciseIds.length) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 

@@ -8,6 +8,7 @@ const countsSchema = new Schema(
     Thu: { type: Number, default: 0, min: 0 },
     Fri: { type: Number, default: 0, min: 0 },
     Sat: { type: Number, default: 0, min: 0 },
+    Sun: { type: Number, default: 0, min: 0 },
   },
   { _id: false },
 );

@@ -4,7 +4,7 @@ const exerciseSchema = new Schema(
   {
     username: { type: String, required: true, lowercase: true, trim: true, index: true },
     name: { type: String, required: true, trim: true },
-    dayOfWeek: { type: String, required: true, enum: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] },
+    dayOfWeek: { type: String, required: true, enum: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] },
     week: { type: Number, required: true, index: true },
     year: { type: Number, required: true, index: true },
     order: { type: Number, required: true, default: 0 },
