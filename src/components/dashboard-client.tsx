@@ -14,7 +14,7 @@ import {
   fadeInUp, springGame, StaggerContainer, StaggerItem,
   SuccessFlash, ParticleBurst, XpPopup, PowerDown,
 } from "@/components/motion";
-import { DAY_LABELS, DAY_ORDER, type DayKey } from "@/lib/week";
+import { DAY_LABELS, DAY_ORDER, DAY_SHORT_LABELS, type DayKey } from "@/lib/week";
 import { daySplitSubtitle, emptyDayLabels, mergeDayLabels, sanitizeDayLabel, type DayLabelsMap } from "@/lib/day-labels";
 
 type SubExercise = {
@@ -98,7 +98,32 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
   const [cloneSourceExercise, setCloneSourceExercise] = useState<Exercise | null>(null);
   const [cloneSubmittingDay, setCloneSubmittingDay] = useState<DayKey | null>(null);
   const [dayLabels, setDayLabels] = useState<DayLabelsMap>(() => emptyDayLabels());
-  const [addModalDayLabel, setAddModalDayLabel] = useState("");
+  const [dayLabelSaving, setDayLabelSaving] = useState(false);
+
+  async function saveDaySplitLabelForActiveDay() {
+    setDayLabelSaving(true);
+    try {
+      const res = await fetch("/api/day-labels", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username,
+          labels: { [activeDay]: sanitizeDayLabel(dayLabels[activeDay]) },
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error ?? "Could not save day label");
+        return;
+      }
+      setDayLabels(mergeDayLabels(data?.labels));
+      toast.success("Day label saved");
+    } catch {
+      toast.error("Could not save day label");
+    } finally {
+      setDayLabelSaving(false);
+    }
+  }
 
   async function loadDayLabels() {
     const res = await fetch(`/api/day-labels?username=${encodeURIComponent(username)}`);
@@ -115,33 +140,15 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
   }, []);
 
-  function openAddQuestModal(day: DayKey) {
-    setAddExerciseDay(day);
-    setAddModalDayLabel(dayLabels[day] ?? "");
-  }
-
-  function closeAddQuestModal() {
-    setAddExerciseDay(null);
-    setAddModalDayLabel("");
-  }
-
   async function addExercise() {
     if (!addExerciseDay || !exerciseName.trim()) return;
-    const dayForQuest = addExerciseDay;
-    const res = await fetch("/api/exercises", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, name: exerciseName, dayOfWeek: dayForQuest }) });
+    const res = await fetch("/api/exercises", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username, name: exerciseName, dayOfWeek: addExerciseDay }) });
     if (!res.ok) return toast.error("Failed to add quest");
-    const labelRes = await fetch("/api/day-labels", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, labels: { [dayForQuest]: sanitizeDayLabel(addModalDayLabel) } }),
-    });
-    if (!labelRes.ok) toast.error("Quest added — custom day label failed to save");
     setQuestAddTrigger((t) => t + 1);
     toast.success("New quest added — +25 XP");
     setExerciseName("");
-    closeAddQuestModal();
+    setAddExerciseDay(null);
     await loadExercises();
-    await loadDayLabels();
   }
 
   async function saveExerciseRename(id: string) {
@@ -325,6 +332,33 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
             <Button variant="ghost" size="sm" onClick={logout}><LogOut className="h-3.5 w-3.5" /> EXIT</Button>
           </div>
         </motion.header>
+
+        <Card className="mb-6 border border-slate-border/45 bg-slate-deep/60 p-4">
+          <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-neon/90">Day label</p>
+          <p className="mt-0.5 mb-3 font-mono text-[10px] text-muted">
+            {DAY_SHORT_LABELS[activeDay]} · {DAY_LABELS[activeDay]} — applies to this weekday only, not to individual quests.
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Input
+              id="active-day-split-label"
+              value={dayLabels[activeDay]}
+              maxLength={48}
+              onChange={(e) => setDayLabels((prev) => ({ ...prev, [activeDay]: e.target.value.slice(0, 48) }))}
+              placeholder="e.g. Push day, Pull day, Leg day"
+              className="font-mono text-[11px] sm:flex-1"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="sm:shrink-0"
+              disabled={dayLabelSaving}
+              onClick={() => void saveDaySplitLabelForActiveDay()}
+            >
+              {dayLabelSaving ? "SAVING…" : "SAVE LABEL"}
+            </Button>
+          </div>
+        </Card>
 
         {/* Day picker (mobile) */}
         {!singleDayMode && (
@@ -611,7 +645,7 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                       </StaggerItem>
                     );
                   })}
-                  <Button variant="dashed" className="w-full" onClick={() => openAddQuestModal(day)}>+ NEW QUEST</Button>
+                  <Button variant="dashed" className="w-full" onClick={() => setAddExerciseDay(day)}>+ NEW QUEST</Button>
                 </StaggerContainer>
               </section>
             );
@@ -635,7 +669,7 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
-                onClick={() => closeAddQuestModal()}
+                onClick={() => setAddExerciseDay(null)}
               />
               <motion.div
                 className="relative z-10 w-full max-w-md px-4 pb-10 pt-2 sm:pb-4"
@@ -677,23 +711,11 @@ export function DashboardClient({ username, initialDay = "Mon", singleDayMode = 
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 }}
                   >
-                    <div className="space-y-1">
-                      <label className="font-mono text-[9px] uppercase tracking-[0.15em] text-muted" htmlFor="new-quest-day-label">
-                        Day label <span className="text-steel normal-case tracking-normal">(optional)</span>
-                      </label>
-                      <Input
-                        id="new-quest-day-label"
-                        value={addModalDayLabel}
-                        onChange={(e) => setAddModalDayLabel(e.target.value.slice(0, 48))}
-                        placeholder="e.g. Push day, Pull day, Leg day…"
-                        className="font-mono text-[11px]"
-                      />
-                    </div>
                     <Input list="exercise-names" value={exerciseName} onChange={(e) => setExerciseName(e.target.value)} placeholder="QUEST NAME..." onKeyDown={(e) => e.key === "Enter" && addExercise()} />
                     <datalist id="exercise-names">{pastNames.map((n) => <option key={n} value={n} />)}</datalist>
                     <div className="flex gap-2">
                       <Button onClick={addExercise} className="flex-1">ACCEPT QUEST</Button>
-                      <Button variant="ghost" onClick={() => closeAddQuestModal()}>CANCEL</Button>
+                      <Button variant="ghost" onClick={() => setAddExerciseDay(null)}>CANCEL</Button>
                     </div>
                   </motion.div>
                 </Card>

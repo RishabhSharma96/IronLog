@@ -31,7 +31,7 @@ import {
   formatLocalYMD,
   type QuestCountSnapshot,
 } from "@/lib/quest-count-history";
-import { daySplitSubtitle, emptyDayLabels, mergeDayLabels, type DayLabelsMap } from "@/lib/day-labels";
+import { daySplitSubtitle, emptyDayLabels, mergeDayLabels, sanitizeDayLabel, type DayLabelsMap } from "@/lib/day-labels";
 
 type Exercise = { _id: string; dayOfWeek: DayKey; subs: { _id: string }[] };
 type MetricRow = { _id: string; metric: MetricKey; value: number; inputUnit: string; createdAt?: string };
@@ -71,6 +71,7 @@ export function DashboardOverviewClient({ username }: { username: string }) {
   const [logTrigger, setLogTrigger] = useState(0);
   const [poweringDown, setPoweringDown] = useState(false);
   const [dayLabels, setDayLabels] = useState<DayLabelsMap>(() => emptyDayLabels());
+  const [dayLabelsSaving, setDayLabelsSaving] = useState(false);
 
   const activeCfg = METRICS[activeMetric];
 
@@ -117,6 +118,32 @@ export function DashboardOverviewClient({ username }: { username: string }) {
     const data = await res.json().catch(() => ({}));
     setDayLabels(mergeDayLabels(data?.labels));
   };
+
+  async function saveDayLabelsToServer() {
+    setDayLabelsSaving(true);
+    try {
+      const labels = DAY_ORDER.reduce((acc, d) => {
+        acc[d] = sanitizeDayLabel(dayLabels[d]);
+        return acc;
+      }, {} as DayLabelsMap);
+      const res = await fetch("/api/day-labels", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, labels }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toast.error(data?.error ?? "Could not save day labels");
+        return;
+      }
+      setDayLabels(mergeDayLabels(data?.labels));
+      toast.success("Day labels saved");
+    } catch {
+      toast.error("Could not save day labels");
+    } finally {
+      setDayLabelsSaving(false);
+    }
+  }
 
   useEffect(() => {
     loadExercises();
@@ -317,6 +344,34 @@ export function DashboardOverviewClient({ username }: { username: string }) {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
             >
+              <Card className="mb-5 border border-slate-border/40 bg-slate-deep/60 p-4">
+                <p className="mb-3 font-mono text-[10px] uppercase tracking-[0.15em] text-neon">
+                  Day labels <span className="text-muted normal-case tracking-normal font-normal">(one per weekday — Push, Pull, Leg…)</span>
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {DAY_ORDER.map((day) => (
+                    <div key={day} className="space-y-1">
+                      <label htmlFor={`day-label-${day}`} className="font-mono text-[9px] uppercase tracking-wider text-muted">
+                        {DAY_SHORT_LABELS[day]} · {DAY_LABELS[day]}
+                      </label>
+                      <Input
+                        id={`day-label-${day}`}
+                        value={dayLabels[day]}
+                        maxLength={48}
+                        onChange={(e) => setDayLabels((prev) => ({ ...prev, [day]: e.target.value.slice(0, 48) }))}
+                        placeholder="e.g. Push day"
+                        className="font-mono text-[11px]"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <Button type="button" size="sm" onClick={() => void saveDayLabelsToServer()} disabled={dayLabelsSaving}>
+                    {dayLabelsSaving ? "SAVING…" : "SAVE DAY LABELS"}
+                  </Button>
+                </div>
+              </Card>
+
               <StaggerContainer className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {DAY_ORDER.map((day) => {
                   const dayExercises = exercises.filter((e) => e.dayOfWeek === day);
